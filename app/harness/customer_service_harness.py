@@ -9,6 +9,7 @@ from app.observability.tracing import LocalTracer
 from app.state.conversation_state import CustomerServiceState, EventSummary
 from app.state.request_models import CustomerServiceRequest
 from app.state.result_models import CustomerServiceResponse
+from app.tools.mcp_manager import MCPManager
 from app.tools.registry import ToolRegistry
 
 
@@ -20,12 +21,14 @@ class CustomerServiceHarness:
         reply_processor: ReplyPostProcessor | None = None,
         state_reducer: StateReducer | None = None,
         tool_registry: ToolRegistry | None = None,
+        mcp_manager: MCPManager | None = None,
     ) -> None:
         self.executor = executor or BusinessAgentExecutor()
         self.prompt_assembler = prompt_assembler or PromptAssembler()
         self.reply_processor = reply_processor or ReplyPostProcessor()
         self.state_reducer = state_reducer or StateReducer()
         self.tool_registry = tool_registry or ToolRegistry()
+        self.mcp_manager = mcp_manager or MCPManager()
 
     async def run(
         self,
@@ -47,30 +50,51 @@ class CustomerServiceHarness:
                 "tool_registry_prepare",
                 {"enabled_names": tool_setup.enabled_names},
             )
+            with tracker.track("prepare_mcp"):
+                mcp_setup = await self.mcp_manager.prepare(request.mcp_servers)
+            tracer.record(
+                "mcp_connect",
+                {"configured_names": mcp_setup.enabled_names},
+                status="started",
+            )
             with tracker.track("assemble_prompt"):
+                guide_parts = [
+                    part
+                    for part in [tool_setup.tool_guide, mcp_setup.guide_text]
+                    if part
+                ]
                 instructions = self.prompt_assembler.build_instructions(
                     state,
-                    tool_guide=tool_setup.tool_guide,
+                    tool_guide="\n".join(guide_parts),
                     extra_instructions=request.instructions,
                 )
                 user_message = self.prompt_assembler.build_user_message(state)
 
-            tracer.record(
-                "agent_start",
-                {"model": request.model, "max_turns": request.max_turns},
-                status="started",
-            )
-            with tracker.track("agent_run"):
-                result = await self.executor.run(
-                    state=state,
-                    instructions=instructions,
-                    user_message=user_message,
-                    tools=tool_setup.tools,
-                    mcp_servers=[],
-                    max_turns=request.max_turns,
-                    model=request.model,
+            async with self.mcp_manager.connect(mcp_setup) as active_mcp_servers:
+                tracer.record(
+                    "mcp_connect",
+                    {
+                        "active_names": [
+                            server.name for server in active_mcp_servers
+                        ]
+                    },
                 )
-            tracer.record("agent_end", {"token_usage": result.token_usage})
+                tracer.record(
+                    "agent_start",
+                    {"model": request.model, "max_turns": request.max_turns},
+                    status="started",
+                )
+                with tracker.track("agent_run"):
+                    result = await self.executor.run(
+                        state=state,
+                        instructions=instructions,
+                        user_message=user_message,
+                        tools=tool_setup.tools,
+                        mcp_servers=active_mcp_servers,
+                        max_turns=request.max_turns,
+                        model=request.model,
+                    )
+                tracer.record("agent_end", {"token_usage": result.token_usage})
 
             with tracker.track("post_process"):
                 state.final_reply = self.reply_processor.clean(result.final_output)

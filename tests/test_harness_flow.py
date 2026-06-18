@@ -1,4 +1,5 @@
 import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -16,8 +17,10 @@ from app.state.request_models import (
     CustomerServiceRequest,
     HttpToolConfig,
     HttpToolParam,
+    MCPServerConfig,
     SlotDefinition,
 )
+from app.tools.mcp_manager import MCPManager
 from app.tools.registry import ToolRegistry
 
 
@@ -343,6 +346,114 @@ async def test_harness_passes_prepared_tools_and_guide_to_executor():
             tenant_id="tenant_a",
             content="Where is order A100?",
             tools=["check_order_status"],
+        )
+    )
+
+    assert response.status == "success"
+
+
+@pytest.mark.asyncio
+async def test_mcp_manager_builds_supported_transports_and_filters():
+    setup = await MCPManager().prepare(
+        [
+            MCPServerConfig(
+                name="product_support",
+                type="stdio",
+                config={
+                    "command": sys.executable,
+                    "args": ["mcp_servers/product_support_server.py"],
+                },
+                tools_filter={
+                    "allowed_tool_names": ["lookup_product_manual"],
+                    "blocked_tool_names": ["check_warranty_policy"],
+                },
+            ),
+            MCPServerConfig(
+                name="remote_sse",
+                type="sse",
+                config={"url": "https://mcp.example.com/sse"},
+                headers={"Authorization": "Bearer token"},
+            ),
+            MCPServerConfig(
+                name="remote_http",
+                type="streamable_http",
+                config={"url": "https://mcp.example.com/mcp"},
+            ),
+        ]
+    )
+
+    assert setup.enabled_names == [
+        "product_support",
+        "remote_sse",
+        "remote_http",
+    ]
+    assert len(setup.servers) == 3
+    assert setup.servers[0].params.command == sys.executable
+    assert setup.servers[0].tool_filter == {
+        "allowed_tool_names": ["lookup_product_manual"],
+        "blocked_tool_names": ["check_warranty_policy"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_local_stdio_mcp_server_is_runnable():
+    manager = MCPManager()
+    setup = await manager.prepare(
+        [
+            MCPServerConfig(
+                name="product_support",
+                type="stdio",
+                config={
+                    "command": sys.executable,
+                    "args": ["mcp_servers/product_support_server.py"],
+                },
+            )
+        ]
+    )
+
+    async with manager.connect(setup) as active_servers:
+        assert len(active_servers) == 1
+        tools = await active_servers[0].list_tools()
+
+    assert {tool.name for tool in tools} == {
+        "lookup_product_manual",
+        "check_warranty_policy",
+    }
+
+
+@pytest.mark.asyncio
+async def test_harness_passes_connected_mcp_servers_to_executor():
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        assert len(mcp_servers) == 1
+        assert mcp_servers[0].name == "product_support"
+        assert "product_support" in instructions
+        return AgentRunResult(final_output="Manual checked.")
+
+    harness = CustomerServiceHarness(
+        executor=BusinessAgentExecutor(runner=fake_runner)
+    )
+    response = await harness.run(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="How do I fix E01?",
+            mcp_servers=[
+                MCPServerConfig(
+                    name="product_support",
+                    type="stdio",
+                    config={
+                        "command": sys.executable,
+                        "args": ["mcp_servers/product_support_server.py"],
+                    },
+                )
+            ],
         )
     )
 
