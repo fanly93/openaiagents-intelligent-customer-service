@@ -3,12 +3,17 @@ from types import SimpleNamespace
 import pytest
 
 from app.harness.business_agent_executor import AgentRunResult, BusinessAgentExecutor
+from app.harness.customer_service_harness import CustomerServiceHarness
 from app.harness.prompt_assembler import PromptAssembler
 from app.harness.state_reducer import StateReducer
 from app.observability.perf import PerformanceTracker
 from app.observability.tracing import LocalTracer
 from app.state.conversation_state import CustomerServiceState
-from app.state.request_models import CustomerProfile, SlotDefinition
+from app.state.request_models import (
+    CustomerProfile,
+    CustomerServiceRequest,
+    SlotDefinition,
+)
 
 
 def test_performance_tracker_records_named_operation():
@@ -140,3 +145,80 @@ async def test_business_agent_executor_uses_sdk_model_and_aggregate_usage(monkey
         "output_tokens": 5,
         "total_tokens": 12,
     }
+
+
+@pytest.mark.asyncio
+async def test_customer_service_harness_runs_with_mock_executor():
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        assert "Use tenant-specific warranty wording." in instructions
+        assert model == "gpt-test"
+        return AgentRunResult(
+            final_output=(
+                "THINK: internal reasoning\n"
+                "Dear Ada,\n"
+                "Your order has shipped."
+            ),
+            token_usage={"total_tokens": 10},
+        )
+
+    harness = CustomerServiceHarness(
+        executor=BusinessAgentExecutor(runner=fake_runner)
+    )
+    response = await harness.run(
+        CustomerServiceRequest(
+            request_id="req_1",
+            tenant_id="tenant_a",
+            channel="email",
+            subject="Order",
+            content="Where is my order?",
+            customer=CustomerProfile(name="Ada"),
+            model="gpt-test",
+            instructions="Use tenant-specific warranty wording.",
+        )
+    )
+
+    assert response.status == "success"
+    assert "Your order has shipped" in response.reply["body"]
+    assert "THINK:" not in response.reply["body"]
+    assert response.token_usage["total_tokens"] == 10
+    assert response.state_snapshot["events"][0]["name"] == "request_start"
+    assert "agent_run" in response.state_snapshot["performance_stats"]
+
+
+@pytest.mark.asyncio
+async def test_customer_service_harness_returns_traced_error_response():
+    async def failing_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        raise RuntimeError("model unavailable")
+
+    harness = CustomerServiceHarness(
+        executor=BusinessAgentExecutor(runner=failing_runner)
+    )
+    response = await harness.run(
+        CustomerServiceRequest(
+            request_id="req_error",
+            tenant_id="tenant_a",
+            content="Help",
+        )
+    )
+
+    assert response.status == "error"
+    assert response.error == "model unavailable"
+    assert response.state_snapshot["events"][-1]["name"] == "request_error"
+    assert response.state_snapshot["events"][-1]["status"] == "error"
+    assert "agent_run" in response.state_snapshot["performance_stats"]
