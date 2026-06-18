@@ -1,10 +1,13 @@
 import asyncio
 import hashlib
+import ipaddress
 import json
+import socket
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
 
+import httpcore
 import httpx
 
 from app.config import get_settings
@@ -23,6 +26,74 @@ _SENSITIVE_KEYS = {
 }
 _RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 _IDEMPOTENT_METHODS = {"GET", "PUT", "DELETE"}
+_LOCAL_DEVELOPMENT_HOSTS = {"mock.local", "localhost", "127.0.0.1"}
+
+
+class _PinnedDNSBackend(httpcore.AsyncNetworkBackend):
+    def __init__(
+        self,
+        addresses_by_host: dict[str, list[str]],
+        backend: httpcore.AsyncNetworkBackend | None = None,
+    ) -> None:
+        self._addresses_by_host = {
+            host.casefold(): list(addresses)
+            for host, addresses in addresses_by_host.items()
+        }
+        self._backend = backend or httpcore.AnyIOBackend()
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Any = None,
+    ) -> httpcore.AsyncNetworkStream:
+        addresses = self._addresses_by_host.get(host.casefold())
+        if not addresses:
+            raise httpcore.ConnectError(
+                f"No prevalidated address for host {host}"
+            )
+
+        last_error: Exception | None = None
+        for address in addresses:
+            try:
+                return await self._backend.connect_tcp(
+                    address,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+            except Exception as exc:
+                last_error = exc
+        raise httpcore.ConnectError(
+            f"Could not connect to a prevalidated address for {host}"
+        ) from last_error
+
+    async def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options: Any = None,
+    ) -> httpcore.AsyncNetworkStream:
+        return await self._backend.connect_unix_socket(
+            path,
+            timeout=timeout,
+            socket_options=socket_options,
+        )
+
+    async def sleep(self, seconds: float) -> None:
+        await self._backend.sleep(seconds)
+
+
+class _PinnedDNSAsyncTransport(httpx.AsyncHTTPTransport):
+    def __init__(self, host: str, addresses: list[str]) -> None:
+        super().__init__(trust_env=False)
+        self._pool = httpcore.AsyncConnectionPool(
+            ssl_context=httpcore.default_ssl_context(),
+            network_backend=_PinnedDNSBackend({host: addresses}),
+        )
 
 
 def _safe_value(value: Any) -> Any:
@@ -91,7 +162,7 @@ def _allowed_hosts() -> set[str]:
             if host.strip()
         }
     if settings.environment in {"local", "test"}:
-        return {"mock.local", "localhost", "127.0.0.1"}
+        return _LOCAL_DEVELOPMENT_HOSTS
     return set()
 
 
@@ -103,6 +174,41 @@ def _validate_target(url: str) -> str | None:
     if host not in _allowed_hosts():
         return "target_not_allowed"
     return None
+
+
+async def _resolve_host_addresses(host: str) -> list[str]:
+    def resolve() -> list[str]:
+        records = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+        return sorted({str(record[4][0]) for record in records})
+
+    return await asyncio.to_thread(resolve)
+
+
+async def _validate_resolved_target(
+    url: str,
+) -> tuple[str | None, list[str]]:
+    host = (urlparse(url).hostname or "").casefold()
+    settings = get_settings()
+    if (
+        settings.environment in {"local", "test"}
+        and host in _LOCAL_DEVELOPMENT_HOSTS
+    ):
+        return None, []
+
+    try:
+        addresses = await _resolve_host_addresses(host)
+    except OSError:
+        return "target_resolution_failed", []
+    if not addresses:
+        return "target_resolution_failed", []
+
+    for address in addresses:
+        try:
+            if not ipaddress.ip_address(address).is_global:
+                return "target_resolves_to_private_address", []
+        except ValueError:
+            return "target_resolution_failed", []
+    return None, addresses
 
 
 def _is_missing(params: dict[str, Any], name: str) -> bool:
@@ -199,6 +305,13 @@ async def call_dynamic_http_tool(
         result = {"error": target_error}
         _record_call(state, config.name, params, result, attempts=0)
         return result
+    resolved_target_error, resolved_addresses = (
+        await _validate_resolved_target(config.url)
+    )
+    if resolved_target_error:
+        result = {"error": resolved_target_error}
+        _record_call(state, config.name, params, result, attempts=0)
+        return result
 
     validation_error = _validate_params(config, params)
     if validation_error:
@@ -224,7 +337,17 @@ async def call_dynamic_http_tool(
     last_error = "unknown error"
     last_status: int | None = None
 
-    async with httpx.AsyncClient(timeout=config.timeout) as client:
+    host = (urlparse(config.url).hostname or "").casefold()
+    transport = (
+        _PinnedDNSAsyncTransport(host, resolved_addresses)
+        if resolved_addresses
+        else None
+    )
+    async with httpx.AsyncClient(
+        timeout=config.timeout,
+        transport=transport,
+        trust_env=False,
+    ) as client:
         for attempt in range(1, max_attempts + 1):
             try:
                 response = await client.request(
@@ -261,7 +384,7 @@ async def call_dynamic_http_tool(
                     )
                     return result
 
-                last_error = f"HTTP {response.status_code}: {response.text[:500]}"
+                last_error = f"HTTP {response.status_code}"
                 if (
                     response.status_code not in _RETRYABLE_STATUS_CODES
                     or attempt >= max_attempts

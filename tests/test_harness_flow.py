@@ -18,9 +18,10 @@ from app.state.request_models import (
     HttpToolConfig,
     HttpToolParam,
     MCPServerConfig,
+    MCPToolOverride,
     SlotDefinition,
 )
-from app.tools.mcp_manager import MCPManager
+from app.tools.mcp_manager import MCPManager, MCPServerDefinition
 from app.tools.registry import ToolRegistry
 
 
@@ -354,14 +355,33 @@ async def test_harness_passes_prepared_tools_and_guide_to_executor():
 
 @pytest.mark.asyncio
 async def test_mcp_manager_builds_supported_transports_and_filters():
-    setup = await MCPManager().prepare(
+    manager = MCPManager(
+        server_registry={
+            "product_support": MCPServerDefinition(
+                type="stdio",
+                config={
+                    "command": sys.executable,
+                    "args": ["mcp_servers/product_support_server.py"],
+                },
+            ),
+            "remote_sse": MCPServerDefinition(
+                type="sse",
+                config={"url": "https://mcp.example.com/sse"},
+            ),
+            "remote_http": MCPServerDefinition(
+                type="streamable_http",
+                config={"url": "https://mcp.example.com/mcp"},
+            ),
+        }
+    )
+    setup = await manager.prepare(
         [
             MCPServerConfig(
                 name="product_support",
                 type="stdio",
                 config={
-                    "command": sys.executable,
-                    "args": ["mcp_servers/product_support_server.py"],
+                    "command": "/bin/sh",
+                    "args": ["-c", "echo compromised"],
                 },
                 tools_filter={
                     "allowed_tool_names": ["lookup_product_manual"],
@@ -389,6 +409,9 @@ async def test_mcp_manager_builds_supported_transports_and_filters():
     ]
     assert len(setup.servers) == 3
     assert setup.servers[0].params.command == sys.executable
+    assert setup.servers[0].params.args == [
+        "mcp_servers/product_support_server.py"
+    ]
     assert setup.servers[0].tool_filter == {
         "allowed_tool_names": ["lookup_product_manual"],
         "blocked_tool_names": ["check_warranty_policy"],
@@ -419,6 +442,157 @@ async def test_local_stdio_mcp_server_is_runnable():
         "lookup_product_manual",
         "check_warranty_policy",
     }
+
+
+@pytest.mark.asyncio
+async def test_local_stdio_mcp_server_applies_tool_filter():
+    manager = MCPManager()
+    setup = await manager.prepare(
+        [
+            MCPServerConfig(
+                name="product_support",
+                type="stdio",
+                config={
+                    "command": sys.executable,
+                    "args": ["mcp_servers/product_support_server.py"],
+                },
+                tools_filter={
+                    "allowed_tool_names": ["lookup_product_manual"],
+                },
+            )
+        ]
+    )
+
+    async with manager.connect(setup) as active_servers:
+        tools = await active_servers[0].list_tools()
+
+    assert [tool.name for tool in tools] == ["lookup_product_manual"]
+
+
+@pytest.mark.asyncio
+async def test_local_stdio_mcp_server_applies_tool_overrides():
+    manager = MCPManager()
+    setup = await manager.prepare(
+        [
+            MCPServerConfig(
+                name="product_support",
+                type="stdio",
+                config={
+                    "command": sys.executable,
+                    "args": ["mcp_servers/product_support_server.py"],
+                },
+                tools_override=[
+                    {
+                        "name": "lookup_product_manual",
+                        "description": "Tenant-specific manual lookup.",
+                        "parameters": [
+                            {
+                                "name": "question",
+                                "description": "Customer's exact support question.",
+                            }
+                        ],
+                    }
+                ],
+            )
+        ]
+    )
+
+    async with manager.connect(setup) as active_servers:
+        tools = await active_servers[0].list_tools()
+
+    tool = next(item for item in tools if item.name == "lookup_product_manual")
+    assert tool.description == "Tenant-specific manual lookup."
+    assert (
+        tool.inputSchema["properties"]["question"]["description"]
+        == "Customer's exact support question."
+    )
+
+
+@pytest.mark.asyncio
+async def test_mcp_manager_skips_invalid_config_without_dropping_valid_servers():
+    setup = await MCPManager().prepare(
+        [
+            MCPServerConfig(
+                name="invalid",
+                type="stdio",
+                config={
+                    "command": sys.executable,
+                    "args": None,
+                    "timeout": "not-a-number",
+                },
+            ),
+            MCPServerConfig(
+                name="valid",
+                type="stdio",
+                config={
+                    "command": sys.executable,
+                    "args": ["mcp_servers/product_support_server.py"],
+                },
+            ),
+        ]
+    )
+
+    assert setup.enabled_names == []
+    assert {item["name"] for item in setup.errors} == {"invalid", "valid"}
+
+
+def test_mcp_tool_override_rejects_malformed_parameter_shapes():
+    with pytest.raises(ValueError):
+        MCPToolOverride.model_validate(
+            {
+                "name": "lookup_product_manual",
+                "parameters": {"question": "not-a-list"},
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_mcp_manager_reports_type_mismatch_without_building_server():
+    setup = await MCPManager().prepare(
+        [
+            MCPServerConfig(
+                name="product_support",
+                type="sse",
+            )
+        ]
+    )
+
+    assert setup.servers == []
+    assert setup.errors == [
+        {
+            "name": "product_support",
+            "error": "server_type_mismatch",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_mcp_manager_reports_missing_trusted_server_endpoint():
+    manager = MCPManager(
+        server_registry={
+            "broken_remote": MCPServerDefinition(
+                type="streamable_http",
+                config={},
+            )
+        }
+    )
+
+    setup = await manager.prepare(
+        [
+            MCPServerConfig(
+                name="broken_remote",
+                type="streamable_http",
+            )
+        ]
+    )
+
+    assert setup.servers == []
+    assert setup.errors == [
+        {
+            "name": "broken_remote",
+            "error": "trusted MCP definition requires a url",
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -458,3 +632,82 @@ async def test_harness_passes_connected_mcp_servers_to_executor():
     )
 
     assert response.status == "success"
+
+
+@pytest.mark.asyncio
+async def test_rag_tool_degrades_to_empty_result_on_provider_failure():
+    class FailingRetriever:
+        async def retrieve(self, **kwargs):
+            raise RuntimeError("rag unavailable")
+
+    setup = await ToolRegistry(
+        knowledge_retriever=FailingRetriever()
+    ).prepare(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Return policy?",
+        )
+    )
+    rag_tool = next(
+        tool for tool in setup.tools if tool.name == "get_rag_knowledge"
+    )
+    state = CustomerServiceState(
+        tenant_id="tenant_a",
+        content="Return policy?",
+    )
+
+    result = await rag_tool.on_invoke_tool(
+        ToolContext(
+            context=state,
+            tool_name=rag_tool.name,
+            tool_call_id="rag_1",
+            tool_arguments='{"query":"return policy"}',
+        ),
+        '{"query":"return policy"}',
+    )
+
+    assert result == []
+    assert state.retrieved_knowledge == []
+    assert state.tool_call_history[-1]["result"]["error"] == "rag_retrieval_failed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raw_input",
+    ["not-json", "[]", "null"],
+)
+async def test_dynamic_function_tool_returns_structured_input_error(raw_input):
+    setup = await ToolRegistry().prepare(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Look up return",
+            http_tools=[
+                HttpToolConfig(
+                    name="lookup_return",
+                    description="Look up return",
+                    url="https://mock.local/returns",
+                )
+            ],
+        )
+    )
+    tool = next(item for item in setup.tools if item.name == "lookup_return")
+    state = CustomerServiceState(
+        tenant_id="tenant_a",
+        content="Look up return",
+    )
+
+    raw_result = await tool.on_invoke_tool(
+        ToolContext(
+            context=state,
+            tool_name=tool.name,
+            tool_call_id="http_1",
+            tool_arguments=raw_input,
+        ),
+        raw_input,
+    )
+
+    assert json.loads(raw_result)["error"] == "invalid_tool_input"
+    assert state.tool_call_history[-1]["tool_name"] == "lookup_return"
+    assert state.tool_call_history[-1]["result"] == {
+        "error": "invalid_tool_input"
+    }

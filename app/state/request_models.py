@@ -60,13 +60,25 @@ class HttpToolConfig(BaseModel):
     retry_backoff: float = Field(default=0.2, ge=0.0, le=5.0)
 
 
+class MCPToolParameterOverride(BaseModel):
+    name: str
+    description: str
+
+
+class MCPToolOverride(BaseModel):
+    name: str
+    description: str | None = None
+    parameters: list[MCPToolParameterOverride] = Field(default_factory=list)
+    parameter_descriptions: dict[str, str] = Field(default_factory=dict)
+
+
 class MCPServerConfig(BaseModel):
     name: str
     type: Literal["stdio", "sse", "streamable_http"] = "stdio"
     config: dict[str, Any] = Field(default_factory=dict)
     headers: dict[str, str] = Field(default_factory=dict)
     tools_filter: dict[str, Any] | None = None
-    tools_override: list[dict[str, Any]] = Field(default_factory=list)
+    tools_override: list[MCPToolOverride] = Field(default_factory=list)
 
 
 class CustomerServiceRequest(BaseModel):

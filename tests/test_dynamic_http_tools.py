@@ -5,7 +5,10 @@ from pydantic import ValidationError
 
 from app.state.conversation_state import CustomerServiceState
 from app.state.request_models import HttpToolConfig, HttpToolParam
-from app.tools.dynamic_http_tools import call_dynamic_http_tool
+from app.tools.dynamic_http_tools import (
+    _PinnedDNSBackend,
+    call_dynamic_http_tool,
+)
 
 
 def _state() -> CustomerServiceState:
@@ -260,6 +263,61 @@ async def test_dynamic_http_tool_rejects_host_outside_runtime_allowlist(monkeypa
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_dynamic_http_tool_rejects_allowlisted_host_resolving_to_private_ip(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "app.tools.dynamic_http_tools._allowed_hosts",
+        lambda: {"internal.example.com"},
+    )
+
+    async def fake_resolve(host):
+        return ["10.0.0.8"]
+
+    monkeypatch.setattr(
+        "app.tools.dynamic_http_tools._resolve_host_addresses",
+        fake_resolve,
+    )
+    config = HttpToolConfig(
+        name="internal",
+        description="Unsafe resolved target",
+        url="https://internal.example.com/orders",
+    )
+
+    result = await call_dynamic_http_tool(_state(), config, {})
+
+    assert result["error"] == "target_resolves_to_private_address"
+    assert not respx.calls
+
+
+@pytest.mark.asyncio
+async def test_pinned_dns_backend_connects_to_prevalidated_address():
+    calls = []
+
+    class FakeBackend:
+        async def connect_tcp(
+            self,
+            host,
+            port,
+            timeout=None,
+            local_address=None,
+            socket_options=None,
+        ):
+            calls.append((host, port))
+            return object()
+
+    backend = _PinnedDNSBackend(
+        {"api.example.com": ["203.0.113.10"]},
+        backend=FakeBackend(),
+    )
+
+    await backend.connect_tcp("api.example.com", 443)
+
+    assert calls == [("203.0.113.10", 443)]
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_dynamic_http_tool_rejects_extra_and_wrong_typed_params():
     config = HttpToolConfig(
         name="get_order",
@@ -374,3 +432,29 @@ def test_http_tool_config_limits_resource_controls():
             max_retries=100,
             retry_backoff=100,
         )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dynamic_http_tool_does_not_expose_sensitive_error_body():
+    respx.get("https://mock.local/order").mock(
+        return_value=httpx.Response(
+            500,
+            json={
+                "access_token": "top-secret-token",
+                "email": "buyer@example.com",
+            },
+        )
+    )
+    config = HttpToolConfig(
+        name="get_order",
+        description="Get order",
+        url="https://mock.local/order",
+        max_retries=0,
+    )
+
+    result = await call_dynamic_http_tool(_state(), config, {})
+
+    serialized = str(result)
+    assert "top-secret-token" not in serialized
+    assert "buyer@example.com" not in serialized

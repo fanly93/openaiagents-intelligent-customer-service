@@ -84,11 +84,21 @@ class ToolRegistry:
             query: str,
         ) -> list[dict[str, Any]]:
             """Retrieve tenant-scoped knowledge relevant to the query."""
-            result = await self.knowledge_retriever.retrieve(
-                tenant_id=context.context.tenant_id,
-                query=query,
-                knowledge_config=request.knowledge_config,
-            )
+            try:
+                result = await self.knowledge_retriever.retrieve(
+                    tenant_id=context.context.tenant_id,
+                    query=query,
+                    knowledge_config=request.knowledge_config,
+                )
+            except Exception:
+                result = []
+                context.context.retrieved_knowledge = result
+                context.context.record_tool_call(
+                    "get_rag_knowledge",
+                    {"query": query},
+                    {"error": "rag_retrieval_failed"},
+                )
+                return result
             context.context.retrieved_knowledge = result
             context.context.record_tool_call(
                 "get_rag_knowledge",
@@ -202,7 +212,24 @@ class ToolRegistry:
         }
 
         async def invoke(context: ToolContext[Any], raw_input: str) -> str:
-            params = json.loads(raw_input or "{}")
+            try:
+                params = json.loads(raw_input or "{}")
+            except json.JSONDecodeError:
+                params = None
+            if not isinstance(params, dict):
+                result = {"error": "invalid_tool_input"}
+                context.context.record_tool_call(
+                    config.name,
+                    {
+                        "input_type": "invalid_json",
+                        "input_length": len(raw_input),
+                    },
+                    result,
+                )
+                return json.dumps(
+                    result,
+                    ensure_ascii=False,
+                )
             result = await call_dynamic_http_tool(
                 context.context,
                 config,

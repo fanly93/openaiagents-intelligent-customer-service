@@ -54,7 +54,10 @@ class CustomerServiceHarness:
                 mcp_setup = await self.mcp_manager.prepare(request.mcp_servers)
             tracer.record(
                 "mcp_connect",
-                {"configured_names": mcp_setup.enabled_names},
+                {
+                    "configured_names": mcp_setup.enabled_names,
+                    "configuration_errors": mcp_setup.errors,
+                },
                 status="started",
             )
             with tracker.track("assemble_prompt"):
