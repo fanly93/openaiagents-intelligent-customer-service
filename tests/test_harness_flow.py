@@ -1,6 +1,8 @@
+import json
 from types import SimpleNamespace
 
 import pytest
+from agents.tool_context import ToolContext
 
 from app.harness.business_agent_executor import AgentRunResult, BusinessAgentExecutor
 from app.harness.customer_service_harness import CustomerServiceHarness
@@ -12,8 +14,11 @@ from app.state.conversation_state import CustomerServiceState
 from app.state.request_models import (
     CustomerProfile,
     CustomerServiceRequest,
+    HttpToolConfig,
+    HttpToolParam,
     SlotDefinition,
 )
+from app.tools.registry import ToolRegistry
 
 
 def test_performance_tracker_records_named_operation():
@@ -242,3 +247,103 @@ async def test_customer_service_harness_returns_traced_error_response():
     assert response.state_snapshot["events"][-1]["name"] == "request_error"
     assert response.state_snapshot["events"][-1]["status"] == "error"
     assert "agent_run" in response.state_snapshot["performance_stats"]
+
+
+@pytest.mark.asyncio
+async def test_tool_registry_builds_real_core_and_request_scoped_tools():
+    setup = await ToolRegistry().prepare(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Where is order A100?",
+            tools=["check_order_status"],
+            http_tools=[
+                HttpToolConfig(
+                    name="lookup_return_case",
+                    description="Look up a return case",
+                    url="https://mock.local/returns",
+                    request_params=[
+                        HttpToolParam(
+                            name="case_id",
+                            description="Return case id",
+                            required=True,
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+
+    assert setup.enabled_names == [
+        "extract_slots",
+        "get_rag_knowledge",
+        "handoff_to_human",
+        "check_order_status",
+        "lookup_return_case",
+    ]
+    assert [tool.name for tool in setup.tools] == setup.enabled_names
+    assert setup.tools[-1].params_json_schema["required"] == ["case_id"]
+    assert "lookup_return_case" in setup.tool_guide
+
+
+@pytest.mark.asyncio
+async def test_order_tool_reads_mock_data_and_updates_state():
+    setup = await ToolRegistry().prepare(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Where is order A100?",
+            tools=["check_order_status"],
+        )
+    )
+    order_tool = next(tool for tool in setup.tools if tool.name == "check_order_status")
+    state = CustomerServiceState(
+        tenant_id="tenant_a",
+        content="Where is order A100?",
+    )
+
+    result = await order_tool.on_invoke_tool(
+        ToolContext(
+            context=state,
+            tool_name=order_tool.name,
+            tool_call_id="call_1",
+            tool_arguments='{"order_id":"A100"}',
+        ),
+        json.dumps({"order_id": "A100"}),
+    )
+
+    assert result["status"] == "shipped"
+    assert state.order_result["order_id"] == "A100"
+    assert state.tool_call_history[-1]["tool_name"] == "check_order_status"
+
+
+@pytest.mark.asyncio
+async def test_harness_passes_prepared_tools_and_guide_to_executor():
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        assert [tool.name for tool in tools][:3] == [
+            "extract_slots",
+            "get_rag_knowledge",
+            "handoff_to_human",
+        ]
+        assert "check_order_status" in [tool.name for tool in tools]
+        assert "check_order_status" in instructions
+        return AgentRunResult(final_output="Order checked.")
+
+    harness = CustomerServiceHarness(
+        executor=BusinessAgentExecutor(runner=fake_runner)
+    )
+    response = await harness.run(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Where is order A100?",
+            tools=["check_order_status"],
+        )
+    )
+
+    assert response.status == "success"

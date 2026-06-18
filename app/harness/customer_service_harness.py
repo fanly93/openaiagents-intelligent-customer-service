@@ -9,6 +9,7 @@ from app.observability.tracing import LocalTracer
 from app.state.conversation_state import CustomerServiceState, EventSummary
 from app.state.request_models import CustomerServiceRequest
 from app.state.result_models import CustomerServiceResponse
+from app.tools.registry import ToolRegistry
 
 
 class CustomerServiceHarness:
@@ -18,11 +19,13 @@ class CustomerServiceHarness:
         prompt_assembler: PromptAssembler | None = None,
         reply_processor: ReplyPostProcessor | None = None,
         state_reducer: StateReducer | None = None,
+        tool_registry: ToolRegistry | None = None,
     ) -> None:
         self.executor = executor or BusinessAgentExecutor()
         self.prompt_assembler = prompt_assembler or PromptAssembler()
         self.reply_processor = reply_processor or ReplyPostProcessor()
         self.state_reducer = state_reducer or StateReducer()
+        self.tool_registry = tool_registry or ToolRegistry()
 
     async def run(
         self,
@@ -38,9 +41,16 @@ class CustomerServiceHarness:
                 "request_start",
                 {"tenant_id": request.tenant_id, "channel": request.channel},
             )
+            with tracker.track("prepare_tools"):
+                tool_setup = await self.tool_registry.prepare(request)
+            tracer.record(
+                "tool_registry_prepare",
+                {"enabled_names": tool_setup.enabled_names},
+            )
             with tracker.track("assemble_prompt"):
                 instructions = self.prompt_assembler.build_instructions(
                     state,
+                    tool_guide=tool_setup.tool_guide,
                     extra_instructions=request.instructions,
                 )
                 user_message = self.prompt_assembler.build_user_message(state)
@@ -55,7 +65,7 @@ class CustomerServiceHarness:
                     state=state,
                     instructions=instructions,
                     user_message=user_message,
-                    tools=[],
+                    tools=tool_setup.tools,
                     mcp_servers=[],
                     max_turns=request.max_turns,
                     model=request.model,
