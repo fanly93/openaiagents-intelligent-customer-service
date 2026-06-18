@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     mock_data_dir: str = "data"
     rag_mode: Literal["mock", "remote"] = "mock"
     remote_rag_url: str | None = None
+    dynamic_http_allowed_hosts: str | None = Field(
+        default=None,
+        alias="DYNAMIC_HTTP_ALLOWED_HOSTS",
+    )
 
 
 @lru_cache

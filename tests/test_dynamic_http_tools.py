@@ -1,6 +1,7 @@
 import httpx
 import pytest
 import respx
+from pydantic import ValidationError
 
 from app.state.conversation_state import CustomerServiceState
 from app.state.request_models import HttpToolConfig, HttpToolParam
@@ -50,14 +51,12 @@ async def test_dynamic_http_tool_calls_post_with_headers_and_maps_response():
 
     assert result == {"status": "shipped"}
     assert route.call_count == 1
-    assert len(state.http_tool_results) == 1
-    assert state.tool_call_history == [
-        {
-            "tool_name": "get_order",
-            "arguments": {"order_id": "A100"},
-            "result": {"status": "shipped"},
-        }
-    ]
+    assert state.http_tool_results == {}
+    history = state.tool_call_history[-1]
+    assert history["tool_name"] == "get_order"
+    assert history["arguments"] == {"order_id": "A100"}
+    assert history["result"] == {"status": "shipped"}
+    assert history["metadata"]["attempts"] == 1
 
 
 @pytest.mark.asyncio
@@ -109,7 +108,7 @@ async def test_dynamic_http_tool_sends_write_method_params_as_json(method):
 @pytest.mark.asyncio
 @respx.mock
 async def test_dynamic_http_tool_cache_key_is_stable_for_nested_params():
-    route = respx.post("https://mock.local/search").mock(
+    route = respx.get("https://mock.local/search").mock(
         return_value=httpx.Response(200, json={"code": 200, "data": {"count": 2}})
     )
     state = _state()
@@ -117,7 +116,7 @@ async def test_dynamic_http_tool_cache_key_is_stable_for_nested_params():
         name="search_orders",
         description="Search orders",
         url="https://mock.local/search",
-        method="POST",
+        method="GET",
     )
 
     first = await call_dynamic_http_tool(
@@ -163,13 +162,11 @@ async def test_dynamic_http_tool_records_missing_required_params():
         "error": "missing_required_params",
         "missing": ["order_id"],
     }
-    assert state.tool_call_history == [
-        {
-            "tool_name": "get_order",
-            "arguments": {"include_items": False},
-            "result": result,
-        }
-    ]
+    history = state.tool_call_history[-1]
+    assert history["tool_name"] == "get_order"
+    assert history["arguments"] == {"include_items": False}
+    assert history["result"] == result
+    assert history["metadata"]["attempts"] == 0
     assert not respx.calls
 
 
@@ -230,6 +227,150 @@ async def test_dynamic_http_tool_records_structured_error_after_retries_exhauste
     result = await call_dynamic_http_tool(state, config, {"order_id": "A100"})
 
     assert result["error"] == "http_tool_failed"
-    assert "500 Internal Server Error" in result["message"]
+    assert "HTTP 500" in result["message"]
     assert route.call_count == 2
     assert state.tool_call_history[-1]["result"] == result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dynamic_http_tool_rejects_host_outside_runtime_allowlist(monkeypatch):
+    monkeypatch.setattr(
+        "app.tools.dynamic_http_tools.get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "environment": "production",
+                "dynamic_http_allowed_hosts": None,
+            },
+        )(),
+    )
+    config = HttpToolConfig(
+        name="metadata",
+        description="Unsafe target",
+        url="http://169.254.169.254/latest/meta-data",
+    )
+
+    result = await call_dynamic_http_tool(_state(), config, {})
+
+    assert result["error"] == "target_not_allowed"
+    assert not respx.calls
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dynamic_http_tool_rejects_extra_and_wrong_typed_params():
+    config = HttpToolConfig(
+        name="get_order",
+        description="Get order",
+        url="https://mock.local/order",
+        request_params=[
+            HttpToolParam(
+                name="order_id",
+                description="Order id",
+                type="string",
+                required=True,
+            ),
+            HttpToolParam(
+                name="include_items",
+                description="Include items",
+                type="boolean",
+            ),
+        ],
+    )
+
+    extra = await call_dynamic_http_tool(
+        _state(),
+        config,
+        {"order_id": "A100", "unexpected": "value"},
+    )
+    wrong_type = await call_dynamic_http_tool(
+        _state(),
+        config,
+        {"order_id": "A100", "include_items": "true"},
+    )
+
+    assert extra == {"error": "unexpected_params", "params": ["unexpected"]}
+    assert wrong_type == {
+        "error": "invalid_param_types",
+        "params": ["include_items"],
+    }
+    assert not respx.calls
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dynamic_http_tool_does_not_cache_write_operations():
+    route = respx.post("https://mock.local/order").mock(
+        side_effect=[
+            httpx.Response(200, json={"code": 200, "data": {"version": 1}}),
+            httpx.Response(200, json={"code": 200, "data": {"version": 2}}),
+        ]
+    )
+    state = _state()
+    config = HttpToolConfig(
+        name="update_order",
+        description="Update order",
+        url="https://mock.local/order",
+        method="POST",
+    )
+
+    first = await call_dynamic_http_tool(state, config, {"order_id": "A100"})
+    second = await call_dynamic_http_tool(state, config, {"order_id": "A100"})
+
+    assert first == {"version": 1}
+    assert second == {"version": 2}
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dynamic_http_tool_does_not_retry_post_without_idempotency_key():
+    route = respx.post("https://mock.local/order").mock(
+        return_value=httpx.Response(503, text="temporarily unavailable")
+    )
+    config = HttpToolConfig(
+        name="create_order",
+        description="Create order",
+        url="https://mock.local/order",
+        method="POST",
+        max_retries=3,
+    )
+
+    result = await call_dynamic_http_tool(_state(), config, {"sku": "X5"})
+
+    assert result["error"] == "http_tool_failed"
+    assert route.call_count == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dynamic_http_tool_handles_empty_204_response():
+    route = respx.delete("https://mock.local/order").mock(
+        return_value=httpx.Response(204)
+    )
+    config = HttpToolConfig(
+        name="delete_order",
+        description="Delete order",
+        url="https://mock.local/order",
+        method="DELETE",
+        max_retries=2,
+    )
+
+    result = await call_dynamic_http_tool(_state(), config, {"order_id": "A100"})
+
+    assert result == {}
+    assert route.call_count == 1
+
+
+def test_http_tool_config_limits_resource_controls():
+    with pytest.raises(ValidationError):
+        HttpToolConfig(
+            name="unsafe",
+            description="Unsafe",
+            url="https://mock.local/order",
+            timeout=300,
+            max_retries=100,
+            retry_backoff=100,
+        )

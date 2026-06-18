@@ -1,5 +1,33 @@
+from typing import Any
+
 from app.state.conversation_state import CustomerServiceState
 from app.state.result_models import CustomerServiceResponse
+
+
+_SENSITIVE_KEYS = {
+    "access_token",
+    "api_key",
+    "authorization",
+    "email",
+    "password",
+    "secret",
+    "token",
+}
+
+
+def _redact_snapshot(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: "[REDACTED]"
+            if key.casefold() in _SENSITIVE_KEYS
+            else _redact_snapshot(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_snapshot(item) for item in value]
+    if isinstance(value, str) and len(value) > 2000:
+        return value[:2000] + "...[TRUNCATED]"
+    return value
 
 
 class StateReducer:
@@ -23,5 +51,5 @@ class StateReducer:
             token_usage=state.token_usage,
             processing_time=processing_time,
             error=error,
-            state_snapshot=state.model_dump(mode="json"),
+            state_snapshot=_redact_snapshot(state.model_dump(mode="json")),
         )

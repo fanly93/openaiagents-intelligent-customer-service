@@ -71,6 +71,27 @@ def test_state_reducer_builds_response_from_state():
     assert response.processing_time == 1.25
 
 
+def test_state_reducer_redacts_sensitive_snapshot_values():
+    state = CustomerServiceState(
+        tenant_id="tenant_a",
+        channel="email",
+        content="Help",
+        http_tool_results={
+            "lookup": {
+                "access_token": "secret-value",
+                "profile": {"email": "buyer@example.com"},
+            }
+        },
+    )
+
+    response = StateReducer().build_response(state, processing_time=0.1)
+
+    result = response.state_snapshot["http_tool_results"]["lookup"]
+    assert result["access_token"] == "[REDACTED]"
+    assert result["profile"]["email"] == "[REDACTED]"
+    assert state.http_tool_results["lookup"]["access_token"] == "secret-value"
+
+
 @pytest.mark.asyncio
 async def test_business_agent_executor_allows_mock_runner():
     async def fake_runner(
@@ -191,7 +212,6 @@ async def test_customer_service_harness_runs_with_mock_executor():
     assert response.token_usage["total_tokens"] == 10
     assert response.state_snapshot["events"][0]["name"] == "request_start"
     assert "agent_run" in response.state_snapshot["performance_stats"]
-
 
 @pytest.mark.asyncio
 async def test_customer_service_harness_returns_traced_error_response():

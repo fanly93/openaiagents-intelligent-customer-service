@@ -55,9 +55,9 @@ class HttpToolConfig(BaseModel):
     request_params: list[HttpToolParam] = Field(default_factory=list)
     headers: dict[str, str] = Field(default_factory=dict)
     response_mapping: dict[str, Any] | None = None
-    timeout: float = 10.0
-    max_retries: int = 0
-    retry_backoff: float = 0.2
+    timeout: float = Field(default=10.0, ge=0.1, le=30.0)
+    max_retries: int = Field(default=0, ge=0, le=3)
+    retry_backoff: float = Field(default=0.2, ge=0.0, le=5.0)
 
 
 class MCPServerConfig(BaseModel):
