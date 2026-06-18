@@ -1,4 +1,10 @@
+from types import SimpleNamespace
+
+import pytest
+
+from app.harness.business_agent_executor import AgentRunResult, BusinessAgentExecutor
 from app.harness.prompt_assembler import PromptAssembler
+from app.harness.state_reducer import StateReducer
 from app.observability.perf import PerformanceTracker
 from app.observability.tracing import LocalTracer
 from app.state.conversation_state import CustomerServiceState
@@ -42,3 +48,95 @@ def test_prompt_assembler_includes_runtime_context_and_language_rules():
     assert "Use the customer's language" in instructions
     assert "tools here" in instructions
     assert "Follow tenant refund policy." in instructions
+
+
+def test_state_reducer_builds_response_from_state():
+    state = CustomerServiceState(
+        request_id="req_1",
+        tenant_id="tenant_a",
+        channel="email",
+        subject="Order status",
+        content="Where is my order?",
+        final_reply="Your order has shipped.",
+    )
+
+    response = StateReducer().build_response(state, processing_time=1.25)
+
+    assert response.reply["body"] == "Your order has shipped."
+    assert response.processing_time == 1.25
+
+
+@pytest.mark.asyncio
+async def test_business_agent_executor_allows_mock_runner():
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        assert model == "gpt-test"
+        return AgentRunResult(
+            final_output="Hello from mock",
+            token_usage={"total_tokens": 10},
+        )
+
+    executor = BusinessAgentExecutor(runner=fake_runner)
+    state = CustomerServiceState(tenant_id="tenant_a", channel="chat", content="Hi")
+    result = await executor.run(
+        state=state,
+        instructions="instructions",
+        user_message="Hi",
+        tools=[],
+        mcp_servers=[],
+        max_turns=3,
+        model="gpt-test",
+    )
+
+    assert result.final_output == "Hello from mock"
+    assert result.token_usage["total_tokens"] == 10
+
+
+@pytest.mark.asyncio
+async def test_business_agent_executor_uses_sdk_model_and_aggregate_usage(monkeypatch):
+    import agents
+
+    state = CustomerServiceState(tenant_id="tenant_a", channel="chat", content="Hi")
+
+    async def fake_sdk_run(starting_agent, input, **kwargs):
+        assert starting_agent.model == "gpt-test"
+        assert input == "Hi"
+        assert kwargs["context"] is state
+        assert kwargs["max_turns"] == 3
+        return SimpleNamespace(
+            final_output="Hello from SDK",
+            raw_responses=["response"],
+            context_wrapper=SimpleNamespace(
+                usage=SimpleNamespace(
+                    input_tokens=7,
+                    output_tokens=5,
+                    total_tokens=12,
+                )
+            ),
+        )
+
+    monkeypatch.setattr(agents.Runner, "run", fake_sdk_run)
+
+    result = await BusinessAgentExecutor().run(
+        state=state,
+        instructions="instructions",
+        user_message="Hi",
+        tools=[],
+        mcp_servers=[],
+        max_turns=3,
+        model="gpt-test",
+    )
+
+    assert result.final_output == "Hello from SDK"
+    assert result.token_usage == {
+        "input_tokens": 7,
+        "output_tokens": 5,
+        "total_tokens": 12,
+    }
