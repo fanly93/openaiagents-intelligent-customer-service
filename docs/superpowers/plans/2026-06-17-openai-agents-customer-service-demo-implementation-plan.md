@@ -111,7 +111,7 @@ openaiagents-intelligent-customer-service/
 - Create: `app/config.py`
 - Test: command-only validation
 
-- [ ] **Step 1: Create `pyproject.toml`**
+- [x] **Step 1: Create `pyproject.toml`**
 
 ```toml
 [project]
@@ -146,13 +146,13 @@ testpaths = ["tests"]
 pythonpath = ["."]
 ```
 
-- [ ] **Step 2: Create `app/__init__.py`**
+- [x] **Step 2: Create `app/__init__.py`**
 
 ```python
 """OpenAI Agents intelligent customer service backend."""
 ```
 
-- [ ] **Step 3: Create `app/config.py`**
+- [x] **Step 3: Create `app/config.py`**
 
 ```python
 from functools import lru_cache
@@ -184,13 +184,13 @@ def get_settings() -> Settings:
     return Settings()
 ```
 
-- [ ] **Step 4: Install dependencies**
+- [x] **Step 4: Install dependencies**
 
 Run: `.venv/bin/python -m pip install -e ".[dev]"`
 
 Expected: command exits with code 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml app/__init__.py app/config.py
@@ -204,7 +204,7 @@ git commit -m "chore: initialize python project"
 - Create: `app/state/request_models.py`
 - Test: `tests/test_state_models.py`
 
-- [ ] **Step 1: Write failing tests for request defaults**
+- [x] **Step 1: Write failing tests for request defaults**
 
 Create `tests/test_state_models.py`:
 
@@ -241,13 +241,13 @@ def test_slot_definition_keeps_aliases_and_required_flag():
     assert slot.aliases == ["model", "型号"]
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_state_models.py -v`
 
 Expected: FAIL with `ModuleNotFoundError` or missing model classes.
 
-- [ ] **Step 3: Implement request models**
+- [x] **Step 3: Implement request models**
 
 Create `app/state/__init__.py`:
 
@@ -350,13 +350,13 @@ class CustomerServiceRequest(BaseModel):
     instructions: str | None = None
 ```
 
-- [ ] **Step 4: Run test to verify pass**
+- [x] **Step 4: Run test to verify pass**
 
 Run: `.venv/bin/python -m pytest tests/test_state_models.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/state/__init__.py app/state/request_models.py tests/test_state_models.py
@@ -370,7 +370,7 @@ git commit -m "feat: add customer service request models"
 - Create: `app/state/result_models.py`
 - Modify: `tests/test_state_models.py`
 
-- [ ] **Step 1: Add failing tests for state and response**
+- [x] **Step 1: Add failing tests for state and response**
 
 Append to `tests/test_state_models.py`:
 
@@ -414,13 +414,13 @@ def test_response_contains_handoff_fields():
     assert response.need_handoff_to_human is False
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_state_models.py -v`
 
 Expected: FAIL with missing `conversation_state` / `result_models`.
 
-- [ ] **Step 3: Implement state model**
+- [x] **Step 3: Implement state model**
 
 Create `app/state/conversation_state.py`:
 
@@ -490,7 +490,7 @@ class CustomerServiceState(BaseModel):
         )
 ```
 
-- [ ] **Step 4: Implement response models**
+- [x] **Step 4: Implement response models**
 
 Create `app/state/result_models.py`:
 
@@ -521,13 +521,13 @@ class CustomerServiceResponse(BaseModel):
     state_snapshot: dict[str, Any] = Field(default_factory=dict)
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_state_models.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/state/conversation_state.py app/state/result_models.py tests/test_state_models.py
@@ -541,7 +541,7 @@ git commit -m "feat: add conversation state and response models"
 - Create: `app/api/compatibility.py`
 - Test: `tests/test_api_compatibility.py`
 
-- [ ] **Step 1: Write failing compatibility tests**
+- [x] **Step 1: Write failing compatibility tests**
 
 Create `tests/test_api_compatibility.py`:
 
@@ -570,13 +570,13 @@ def test_emailv4_payload_maps_to_customer_service_request():
     assert req.contexts[0].content == "Previous message"
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_api_compatibility.py -v`
 
 Expected: FAIL with missing module.
 
-- [ ] **Step 3: Implement compatibility mapper**
+- [x] **Step 3: Implement compatibility mapper**
 
 Create `app/api/__init__.py`:
 
@@ -643,19 +643,19 @@ def convert_emailv4_payload(payload: dict[str, Any]) -> CustomerServiceRequest:
     )
 ```
 
-- [ ] **Step 4: Run compatibility tests**
+- [x] **Step 4: Run compatibility tests**
 
 Run: `.venv/bin/python -m pytest tests/test_api_compatibility.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run all Phase 1 tests**
+- [x] **Step 5: Run all Phase 1 tests**
 
 Run: `.venv/bin/python -m pytest tests/test_state_models.py tests/test_api_compatibility.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/api/__init__.py app/api/compatibility.py tests/test_api_compatibility.py
@@ -664,9 +664,9 @@ git commit -m "feat: add emailv4 compatibility mapper"
 
 ### Phase 1 Stop and Report
 
-- [ ] Stop after Task 1.4.
-- [ ] Report changed files, tests run, commits created, and any model/API risks.
-- [ ] Wait for user approval before Phase 2.
+- [x] Stop after Task 1.4.
+- [x] Report changed files, tests run, commits created, and any model/API risks.
+- [x] Wait for user approval before Phase 2.
 
 ---
 
@@ -691,7 +691,7 @@ git commit -m "feat: add emailv4 compatibility mapper"
 - Create: `app/observability/tracing.py`
 - Test: `tests/test_harness_flow.py`
 
-- [ ] **Step 1: Write failing tests for perf and tracing**
+- [x] **Step 1: Write failing tests for perf and tracing**
 
 Create `tests/test_harness_flow.py`:
 
@@ -718,13 +718,13 @@ def test_local_tracer_records_events():
     assert tracer.events[0].detail["model"] == "gpt-4.1-mini"
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: FAIL with missing observability modules.
 
-- [ ] **Step 3: Implement perf tracker**
+- [x] **Step 3: Implement perf tracker**
 
 Create `app/observability/__init__.py`:
 
@@ -764,7 +764,7 @@ class PerformanceTracker:
         }
 ```
 
-- [ ] **Step 4: Implement local tracer**
+- [x] **Step 4: Implement local tracer**
 
 Create `app/observability/tracing.py`:
 
@@ -796,13 +796,13 @@ class LocalTracer:
         self.events.append(TraceEvent(name=name, status=status, detail=detail or {}))
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/observability tests/test_harness_flow.py
@@ -818,7 +818,7 @@ git commit -m "feat: add local observability primitives"
 - Test: `tests/test_reply_post_processor.py`
 - Modify: `tests/test_harness_flow.py`
 
-- [ ] **Step 1: Add failing tests**
+- [x] **Step 1: Add failing tests**
 
 Append to `tests/test_harness_flow.py`:
 
@@ -866,13 +866,13 @@ def test_reply_post_processor_removes_react_markers():
     assert "Dear customer" in cleaned
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py tests/test_reply_post_processor.py -v`
 
 Expected: FAIL with missing harness modules.
 
-- [ ] **Step 3: Implement harness package and prompt assembler**
+- [x] **Step 3: Implement harness package and prompt assembler**
 
 Create `app/harness/__init__.py`:
 
@@ -930,7 +930,7 @@ class PromptAssembler:
         return state.content
 ```
 
-- [ ] **Step 4: Implement reply post processor**
+- [x] **Step 4: Implement reply post processor**
 
 Create `app/harness/reply_post_processor.py`:
 
@@ -961,13 +961,13 @@ class ReplyPostProcessor:
         return re.sub(r"\n{3,}", "\n\n", cleaned)
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py tests/test_reply_post_processor.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/harness tests/test_harness_flow.py tests/test_reply_post_processor.py
@@ -981,7 +981,7 @@ git commit -m "feat: add prompt assembly and reply post processing"
 - Create: `app/harness/business_agent_executor.py`
 - Modify: `tests/test_harness_flow.py`
 
-- [ ] **Step 1: Add failing tests**
+- [x] **Step 1: Add failing tests**
 
 Append to `tests/test_harness_flow.py`:
 
@@ -1038,13 +1038,13 @@ async def test_business_agent_executor_allows_mock_runner():
     assert result.token_usage["total_tokens"] == 10
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: FAIL with missing modules/classes.
 
-- [ ] **Step 3: Implement state reducer**
+- [x] **Step 3: Implement state reducer**
 
 Create `app/harness/state_reducer.py`:
 
@@ -1076,7 +1076,7 @@ class StateReducer:
         )
 ```
 
-- [ ] **Step 4: Implement business agent executor**
+- [x] **Step 4: Implement business agent executor**
 
 Create `app/harness/business_agent_executor.py`:
 
@@ -1180,13 +1180,13 @@ class BusinessAgentExecutor:
         )
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/harness/state_reducer.py app/harness/business_agent_executor.py tests/test_harness_flow.py
@@ -1199,7 +1199,7 @@ git commit -m "feat: add state reducer and agent executor"
 - Create: `app/harness/customer_service_harness.py`
 - Modify: `tests/test_harness_flow.py`
 
-- [ ] **Step 1: Add failing end-to-end harness test**
+- [x] **Step 1: Add failing end-to-end harness test**
 
 Append to `tests/test_harness_flow.py`:
 
@@ -1242,13 +1242,13 @@ async def test_customer_service_harness_runs_with_mock_executor():
     assert response.state_snapshot["events"][0]["name"] == "request_start"
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_customer_service_harness_runs_with_mock_executor -v`
 
 Expected: FAIL with missing `CustomerServiceHarness`.
 
-- [ ] **Step 3: Implement harness**
+- [x] **Step 3: Implement harness**
 
 Create `app/harness/customer_service_harness.py`:
 
@@ -1339,13 +1339,13 @@ class CustomerServiceHarness:
         ]
 ```
 
-- [ ] **Step 4: Run harness tests**
+- [x] **Step 4: Run harness tests**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/harness/customer_service_harness.py tests/test_harness_flow.py
@@ -1354,9 +1354,9 @@ git commit -m "feat: add customer service harness skeleton"
 
 ### Phase 2 Stop and Report
 
-- [ ] Stop after Task 2.4.
-- [ ] Report changed files, tests run, commits created, and any Agent SDK integration risks.
-- [ ] Wait for user approval before Phase 3.
+- [x] Stop after Task 2.4.
+- [x] Report changed files, tests run, commits created, and any Agent SDK integration risks.
+- [x] Wait for user approval before Phase 3.
 
 ---
 
@@ -1371,7 +1371,7 @@ git commit -m "feat: add customer service harness skeleton"
 - Create: `app/tools/core_tools.py`
 - Test: `tests/test_tools_extract_slots.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_tools_extract_slots.py`:
 
@@ -1408,13 +1408,13 @@ async def test_extract_slots_writes_configured_slots_only():
     assert state.collected_slots["product_model"].value == "Airdog X5"
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_tools_extract_slots.py -v`
 
 Expected: FAIL with missing tools module.
 
-- [ ] **Step 3: Implement core tool logic**
+- [x] **Step 3: Implement core tool logic**
 
 Create `app/tools/__init__.py`:
 
@@ -1455,13 +1455,13 @@ async def extract_slots_impl(
     return {"accepted": accepted, "ignored": ignored}
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_tools_extract_slots.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/tools tests/test_tools_extract_slots.py
@@ -1477,7 +1477,7 @@ git commit -m "feat: add configurable slot extraction"
 - Create: `data/knowledge/product_support.json`
 - Test: `tests/test_knowledge_retriever.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_knowledge_retriever.py`:
 
@@ -1507,7 +1507,7 @@ async def test_mock_knowledge_retriever_filters_by_file_ids():
     assert all(item["file_id"] == "return_policy" for item in result)
 ```
 
-- [ ] **Step 2: Create mock data**
+- [x] **Step 2: Create mock data**
 
 Create `data/knowledge/after_sales.json`:
 
@@ -1544,13 +1544,13 @@ Create `data/knowledge/product_support.json`:
 ]
 ```
 
-- [ ] **Step 3: Run test to verify failure**
+- [x] **Step 3: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_knowledge_retriever.py -v`
 
 Expected: FAIL with missing retriever.
 
-- [ ] **Step 4: Implement retriever**
+- [x] **Step 4: Implement retriever**
 
 Create `app/retrieval/__init__.py`:
 
@@ -1622,13 +1622,13 @@ class MockKnowledgeRetriever:
         return kb_ids, file_ids, config.top_k, config.threshold
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_knowledge_retriever.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/retrieval data/knowledge tests/test_knowledge_retriever.py
@@ -1641,7 +1641,7 @@ git commit -m "feat: add mock knowledge retriever"
 - Create: `app/tools/dynamic_http_tools.py`
 - Test: `tests/test_dynamic_http_tools.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_dynamic_http_tools.py`:
 
@@ -1676,13 +1676,13 @@ async def test_dynamic_http_tool_calls_post_and_maps_response():
     assert state.http_tool_results
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_dynamic_http_tools.py -v`
 
 Expected: FAIL with missing dynamic HTTP module.
 
-- [ ] **Step 3: Implement dynamic HTTP call helper**
+- [x] **Step 3: Implement dynamic HTTP call helper**
 
 Create `app/tools/dynamic_http_tools.py`:
 
@@ -1758,13 +1758,13 @@ def _map_response(data: dict[str, Any], mapping: dict[str, Any] | None) -> dict[
     return {"error": "api_error", "raw": data}
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_dynamic_http_tools.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/tools/dynamic_http_tools.py tests/test_dynamic_http_tools.py
@@ -1781,7 +1781,7 @@ git commit -m "feat: add dynamic http tool executor"
 - Create: `mcp_servers/product_support_server.py`
 - Modify: `tests/test_harness_flow.py`
 
-- [ ] **Step 1: Create mock order and logistics data**
+- [x] **Step 1: Create mock order and logistics data**
 
 Create `data/mock_orders.json`:
 
@@ -1815,7 +1815,7 @@ Create `data/mock_logistics.json`:
 }
 ```
 
-- [ ] **Step 2: Implement registry**
+- [x] **Step 2: Implement registry**
 
 Create `app/tools/registry.py`:
 
@@ -1841,7 +1841,7 @@ class ToolRegistry:
         return ToolSetup(tools=[], tool_guide=guide, enabled_names=enabled)
 ```
 
-- [ ] **Step 3: Implement MCP manager stub**
+- [x] **Step 3: Implement MCP manager stub**
 
 Create `app/tools/mcp_manager.py`:
 
@@ -1870,7 +1870,7 @@ class MCPManager:
         return AsyncExitStack()
 ```
 
-- [ ] **Step 4: Create local MCP example server file**
+- [x] **Step 4: Create local MCP example server file**
 
 Create `mcp_servers/product_support_server.py`:
 
@@ -1890,7 +1890,7 @@ def check_warranty_policy(product_or_sku: str) -> str:
     return f"{product_or_sku} includes a one-year limited warranty for manufacturing defects."
 ```
 
-- [ ] **Step 5: Add registry test**
+- [x] **Step 5: Add registry test**
 
 Append to `tests/test_harness_flow.py`:
 
@@ -1909,13 +1909,13 @@ async def test_tool_registry_includes_core_tools():
     assert "handoff_to_human" in setup.enabled_names
 ```
 
-- [ ] **Step 6: Run Phase 3 tests**
+- [x] **Step 6: Run Phase 3 tests**
 
 Run: `.venv/bin/python -m pytest tests/test_tools_extract_slots.py tests/test_knowledge_retriever.py tests/test_dynamic_http_tools.py tests/test_harness_flow.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add app/tools data/mock_orders.json data/mock_logistics.json mcp_servers tests/test_harness_flow.py
@@ -1929,7 +1929,7 @@ git commit -m "feat: add tool registry and mcp scaffold"
 - Modify: `app/tools/mcp_manager.py`
 - Modify: `tests/test_harness_flow.py`
 
-- [ ] **Step 1: Add MCP manager config test**
+- [x] **Step 1: Add MCP manager config test**
 
 Append to `tests/test_harness_flow.py`:
 
@@ -1957,7 +1957,7 @@ async def test_mcp_manager_accepts_stdio_config():
     assert "product_support" in setup.guide_text
 ```
 
-- [ ] **Step 2: Replace example server with FastMCP server**
+- [x] **Step 2: Replace example server with FastMCP server**
 
 Update `mcp_servers/product_support_server.py`:
 
@@ -1988,7 +1988,7 @@ if __name__ == "__main__":
     mcp.run()
 ```
 
-- [ ] **Step 3: Implement MCPManager using OpenAI Agents MCP classes**
+- [x] **Step 3: Implement MCPManager using OpenAI Agents MCP classes**
 
 Update `app/tools/mcp_manager.py`:
 
@@ -2063,19 +2063,19 @@ class MCPManager:
         return AsyncExitStack()
 ```
 
-- [ ] **Step 4: Run MCP-related tests**
+- [x] **Step 4: Run MCP-related tests**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_mcp_manager_accepts_stdio_config -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Syntax check MCP server**
+- [x] **Step 5: Syntax check MCP server**
 
 Run: `.venv/bin/python -m py_compile mcp_servers/product_support_server.py`
 
 Expected: command exits with code 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml app/tools/mcp_manager.py mcp_servers/product_support_server.py tests/test_harness_flow.py
@@ -2084,9 +2084,9 @@ git commit -m "feat: add runnable local mcp server"
 
 ### Phase 3 Stop and Report
 
-- [ ] Stop after Task 3.5.
-- [ ] Report changed files, tests run, commits created, and remaining tool/MCP limitations.
-- [ ] Wait for user approval before Phase 4.
+- [x] Stop after Task 3.5.
+- [x] Report changed files, tests run, commits created, and remaining tool/MCP limitations.
+- [x] Wait for user approval before Phase 4.
 
 ---
 
