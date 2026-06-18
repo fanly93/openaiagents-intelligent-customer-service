@@ -1,0 +1,9 @@
+[
+  {
+    "tenant_id": "tenant_a",
+    "kb_id": "kb_product_support",
+    "file_id": "troubleshooting_3c",
+    "text": "For E01 errors, restart the device, check the filter compartment, and confirm the power adapter is connected.",
+    "keywords": ["E01", "restart", "power", "filter"]
+  }
+]

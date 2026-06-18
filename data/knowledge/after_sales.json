@@ -1,0 +1,16 @@
+[
+  {
+    "tenant_id": "tenant_a",
+    "kb_id": "kb_after_sales",
+    "file_id": "return_policy",
+    "text": "Customers can request a return within 30 days if the item is unused and in original packaging.",
+    "keywords": ["return", "refund", "policy"]
+  },
+  {
+    "tenant_id": "tenant_a",
+    "kb_id": "kb_after_sales",
+    "file_id": "warranty_policy",
+    "text": "Most electronic products include a one-year limited warranty for manufacturing defects.",
+    "keywords": ["warranty", "defect", "repair"]
+  }
+]
