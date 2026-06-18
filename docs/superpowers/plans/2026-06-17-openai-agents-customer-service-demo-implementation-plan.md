@@ -186,7 +186,7 @@ def get_settings() -> Settings:
 
 - [ ] **Step 4: Install dependencies**
 
-Run: `python -m pip install -e ".[dev]"`
+Run: `.venv/bin/python -m pip install -e ".[dev]"`
 
 Expected: command exits with code 0.
 
@@ -243,7 +243,7 @@ def test_slot_definition_keeps_aliases_and_required_flag():
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pytest tests/test_state_models.py -v`
+Run: `.venv/bin/python -m pytest tests/test_state_models.py -v`
 
 Expected: FAIL with `ModuleNotFoundError` or missing model classes.
 
@@ -352,7 +352,7 @@ class CustomerServiceRequest(BaseModel):
 
 - [ ] **Step 4: Run test to verify pass**
 
-Run: `pytest tests/test_state_models.py -v`
+Run: `.venv/bin/python -m pytest tests/test_state_models.py -v`
 
 Expected: PASS.
 
@@ -416,7 +416,7 @@ def test_response_contains_handoff_fields():
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `pytest tests/test_state_models.py -v`
+Run: `.venv/bin/python -m pytest tests/test_state_models.py -v`
 
 Expected: FAIL with missing `conversation_state` / `result_models`.
 
@@ -523,7 +523,7 @@ class CustomerServiceResponse(BaseModel):
 
 - [ ] **Step 5: Run tests**
 
-Run: `pytest tests/test_state_models.py -v`
+Run: `.venv/bin/python -m pytest tests/test_state_models.py -v`
 
 Expected: PASS.
 
@@ -572,7 +572,7 @@ def test_emailv4_payload_maps_to_customer_service_request():
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pytest tests/test_api_compatibility.py -v`
+Run: `.venv/bin/python -m pytest tests/test_api_compatibility.py -v`
 
 Expected: FAIL with missing module.
 
@@ -645,13 +645,13 @@ def convert_emailv4_payload(payload: dict[str, Any]) -> CustomerServiceRequest:
 
 - [ ] **Step 4: Run compatibility tests**
 
-Run: `pytest tests/test_api_compatibility.py -v`
+Run: `.venv/bin/python -m pytest tests/test_api_compatibility.py -v`
 
 Expected: PASS.
 
 - [ ] **Step 5: Run all Phase 1 tests**
 
-Run: `pytest tests/test_state_models.py tests/test_api_compatibility.py -v`
+Run: `.venv/bin/python -m pytest tests/test_state_models.py tests/test_api_compatibility.py -v`
 
 Expected: PASS.
 
@@ -673,6 +673,15 @@ git commit -m "feat: add emailv4 compatibility mapper"
 ## Phase 2: Harness Core and OpenAI Agent Execution
 
 **Phase Goal:** Implement the main harness flow, prompt assembly, OpenAI Agents SDK executor, reply post-processing, and state reduction.
+
+**Phase 2 implementation notes:**
+
+- Preserve the approved single-Agent harness architecture and `tenant_id` request model.
+- Pass request-level `model` directly to `BusinessAgentExecutor`; do not add it to persistent conversation state.
+- Pass request-level `instructions` into `PromptAssembler` as additive runtime instructions.
+- Copy local trace events into `CustomerServiceState.events` before response reduction.
+- Target the installed `openai-agents==0.17.5` API: `Agent(...)` accepts tools and MCP servers, while `Runner.run(...)` accepts `context`, `hooks`, and `max_turns`.
+- Read aggregate token usage from `result.context_wrapper.usage`; do not infer total usage from only the first and last raw responses.
 
 ### Task 2.1: Implement Performance Tracker and Local Trace Skeleton
 
@@ -711,7 +720,7 @@ def test_local_tracer_records_events():
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pytest tests/test_harness_flow.py -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: FAIL with missing observability modules.
 
@@ -789,7 +798,7 @@ class LocalTracer:
 
 - [ ] **Step 5: Run tests**
 
-Run: `pytest tests/test_harness_flow.py -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: PASS.
 
@@ -828,11 +837,16 @@ def test_prompt_assembler_includes_slot_schema_and_language_rules():
         slot_schema=[SlotDefinition(name="error_code", description="Device error code")],
     )
 
-    instructions = PromptAssembler().build_instructions(state, tool_guide="tools here")
+    instructions = PromptAssembler().build_instructions(
+        state,
+        tool_guide="tools here",
+        extra_instructions="Follow tenant refund policy.",
+    )
 
     assert "error_code" in instructions
     assert "Use the customer's language" in instructions
     assert "tools here" in instructions
+    assert "Follow tenant refund policy." in instructions
 ```
 
 Create `tests/test_reply_post_processor.py`:
@@ -854,7 +868,7 @@ def test_reply_post_processor_removes_react_markers():
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `pytest tests/test_harness_flow.py tests/test_reply_post_processor.py -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py tests/test_reply_post_processor.py -v`
 
 Expected: FAIL with missing harness modules.
 
@@ -873,7 +887,12 @@ from app.state.conversation_state import CustomerServiceState
 
 
 class PromptAssembler:
-    def build_instructions(self, state: CustomerServiceState, tool_guide: str = "") -> str:
+    def build_instructions(
+        self,
+        state: CustomerServiceState,
+        tool_guide: str = "",
+        extra_instructions: str | None = None,
+    ) -> str:
         slot_lines = [
             f"- {slot.name}: {slot.description} (required={slot.required})"
             for slot in state.slot_schema
@@ -899,6 +918,7 @@ class PromptAssembler:
                 "## User Memories\n" + "\n".join(memory_lines) if memory_lines else "",
                 "## Retrieved Knowledge\n" + "\n".join(knowledge_lines) if knowledge_lines else "",
                 "## Available Tools\n" + tool_guide if tool_guide else "",
+                "## Tenant Instructions\n" + extra_instructions if extra_instructions else "",
             ]
             if part
         )
@@ -943,7 +963,7 @@ class ReplyPostProcessor:
 
 - [ ] **Step 5: Run tests**
 
-Run: `pytest tests/test_harness_flow.py tests/test_reply_post_processor.py -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py tests/test_reply_post_processor.py -v`
 
 Expected: PASS.
 
@@ -990,7 +1010,16 @@ def test_state_reducer_builds_response_from_state():
 
 @pytest.mark.asyncio
 async def test_business_agent_executor_allows_mock_runner():
-    async def fake_runner(state, instructions, user_message, tools, mcp_servers, max_turns):
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        assert model == "gpt-test"
         return AgentRunResult(final_output="Hello from mock", token_usage={"total_tokens": 10})
 
     executor = BusinessAgentExecutor(runner=fake_runner)
@@ -1002,6 +1031,7 @@ async def test_business_agent_executor_allows_mock_runner():
         tools=[],
         mcp_servers=[],
         max_turns=3,
+        model="gpt-test",
     )
 
     assert result.final_output == "Hello from mock"
@@ -1010,7 +1040,7 @@ async def test_business_agent_executor_allows_mock_runner():
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `pytest tests/test_harness_flow.py -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: FAIL with missing modules/classes.
 
@@ -1067,7 +1097,7 @@ class AgentRunResult:
 
 
 RunnerCallable = Callable[
-    [CustomerServiceState, str, str, list[Any], list[Any], int],
+    [CustomerServiceState, str, str, list[Any], list[Any], int, str | None],
     Awaitable[AgentRunResult],
 ]
 
@@ -1084,10 +1114,27 @@ class BusinessAgentExecutor:
         tools: list[Any],
         mcp_servers: list[Any],
         max_turns: int,
+        model: str | None = None,
     ) -> AgentRunResult:
         if self._runner:
-            return await self._runner(state, instructions, user_message, tools, mcp_servers, max_turns)
-        return await self._run_openai_agents(state, instructions, user_message, tools, mcp_servers, max_turns)
+            return await self._runner(
+                state,
+                instructions,
+                user_message,
+                tools,
+                mcp_servers,
+                max_turns,
+                model,
+            )
+        return await self._run_openai_agents(
+            state,
+            instructions,
+            user_message,
+            tools,
+            mcp_servers,
+            max_turns,
+            model,
+        )
 
     async def _run_openai_agents(
         self,
@@ -1097,6 +1144,7 @@ class BusinessAgentExecutor:
         tools: list[Any],
         mcp_servers: list[Any],
         max_turns: int,
+        model: str | None,
     ) -> AgentRunResult:
         from agents import Agent, Runner
 
@@ -1104,7 +1152,7 @@ class BusinessAgentExecutor:
         agent = Agent[CustomerServiceState](
             name="Customer Service Agent",
             instructions=instructions,
-            model=state.model if hasattr(state, "model") else settings.default_model,
+            model=model or settings.default_model,
             tools=tools,
             mcp_servers=mcp_servers,
         )
@@ -1115,17 +1163,16 @@ class BusinessAgentExecutor:
             max_turns=max_turns,
         )
         raw_responses = getattr(result, "raw_responses", []) or []
-        usage = {}
-        if raw_responses:
-            first_usage = getattr(raw_responses[0], "usage", None)
-            last_usage = getattr(raw_responses[-1], "usage", None)
-            input_tokens = getattr(first_usage, "input_tokens", 0) if first_usage else 0
-            output_tokens = getattr(last_usage, "output_tokens", 0) if last_usage else 0
-            usage = {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens": input_tokens + output_tokens,
+        aggregate_usage = getattr(getattr(result, "context_wrapper", None), "usage", None)
+        usage = (
+            {
+                "input_tokens": aggregate_usage.input_tokens,
+                "output_tokens": aggregate_usage.output_tokens,
+                "total_tokens": aggregate_usage.total_tokens,
             }
+            if aggregate_usage
+            else {}
+        )
         return AgentRunResult(
             final_output=str(getattr(result, "final_output", result)),
             token_usage=usage,
@@ -1135,7 +1182,7 @@ class BusinessAgentExecutor:
 
 - [ ] **Step 5: Run tests**
 
-Run: `pytest tests/test_harness_flow.py -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: PASS.
 
@@ -1163,7 +1210,17 @@ from app.state.request_models import CustomerServiceRequest
 
 @pytest.mark.asyncio
 async def test_customer_service_harness_runs_with_mock_executor():
-    async def fake_runner(state, instructions, user_message, tools, mcp_servers, max_turns):
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        assert "Use tenant-specific warranty wording." in instructions
+        assert model == "gpt-test"
         return AgentRunResult(final_output="Dear Ada,\nYour order has shipped.")
 
     harness = CustomerServiceHarness(executor=BusinessAgentExecutor(runner=fake_runner))
@@ -1175,16 +1232,19 @@ async def test_customer_service_harness_runs_with_mock_executor():
             subject="Order",
             content="Where is my order?",
             customer=CustomerProfile(name="Ada"),
+            model="gpt-test",
+            instructions="Use tenant-specific warranty wording.",
         )
     )
 
     assert response.status == "success"
     assert "Your order has shipped" in response.reply["body"]
+    assert response.state_snapshot["events"][0]["name"] == "request_start"
 ```
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pytest tests/test_harness_flow.py::test_customer_service_harness_runs_with_mock_executor -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_customer_service_harness_runs_with_mock_executor -v`
 
 Expected: FAIL with missing `CustomerServiceHarness`.
 
@@ -1201,7 +1261,7 @@ from app.harness.reply_post_processor import ReplyPostProcessor
 from app.harness.state_reducer import StateReducer
 from app.observability.perf import PerformanceTracker
 from app.observability.tracing import LocalTracer
-from app.state.conversation_state import CustomerServiceState
+from app.state.conversation_state import CustomerServiceState, EventSummary
 from app.state.request_models import CustomerServiceRequest
 from app.state.result_models import CustomerServiceResponse
 
@@ -1228,7 +1288,10 @@ class CustomerServiceHarness:
         try:
             tracer.record("request_start", {"tenant_id": request.tenant_id, "channel": request.channel})
             with tracker.track("assemble_prompt"):
-                instructions = self.prompt_assembler.build_instructions(state)
+                instructions = self.prompt_assembler.build_instructions(
+                    state,
+                    extra_instructions=request.instructions,
+                )
                 user_message = self.prompt_assembler.build_user_message(state)
             with tracker.track("agent_run"):
                 result = await self.executor.run(
@@ -1238,15 +1301,18 @@ class CustomerServiceHarness:
                     tools=[],
                     mcp_servers=[],
                     max_turns=request.max_turns,
+                    model=request.model,
                 )
             state.final_reply = self.reply_processor.clean(result.final_output)
             state.token_usage = result.token_usage
             state.performance_stats = tracker.summary()
             tracer.record("response_built", {"reply_length": len(state.final_reply or "")})
+            self._sync_trace_events(state, tracer)
             processing_time = perf_counter() - start
             return self.state_reducer.build_response(state, processing_time=round(processing_time, 6))
         except Exception as exc:
             tracer.record("request_error", {"error": str(exc)}, status="error")
+            self._sync_trace_events(state, tracer)
             processing_time = perf_counter() - start
             return self.state_reducer.build_response(state, processing_time=round(processing_time, 6), error=str(exc))
 
@@ -1261,11 +1327,21 @@ class CustomerServiceHarness:
             contexts=request.contexts,
             slot_schema=request.slot_schema,
         )
+
+    @staticmethod
+    def _sync_trace_events(
+        state: CustomerServiceState,
+        tracer: LocalTracer,
+    ) -> None:
+        state.events = [
+            EventSummary(name=event.name, status=event.status, detail=event.detail)
+            for event in tracer.events
+        ]
 ```
 
 - [ ] **Step 4: Run harness tests**
 
-Run: `pytest tests/test_harness_flow.py -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py -v`
 
 Expected: PASS.
 
@@ -1334,7 +1410,7 @@ async def test_extract_slots_writes_configured_slots_only():
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pytest tests/test_tools_extract_slots.py -v`
+Run: `.venv/bin/python -m pytest tests/test_tools_extract_slots.py -v`
 
 Expected: FAIL with missing tools module.
 
@@ -1381,7 +1457,7 @@ async def extract_slots_impl(
 
 - [ ] **Step 4: Run tests**
 
-Run: `pytest tests/test_tools_extract_slots.py -v`
+Run: `.venv/bin/python -m pytest tests/test_tools_extract_slots.py -v`
 
 Expected: PASS.
 
@@ -1470,7 +1546,7 @@ Create `data/knowledge/product_support.json`:
 
 - [ ] **Step 3: Run test to verify failure**
 
-Run: `pytest tests/test_knowledge_retriever.py -v`
+Run: `.venv/bin/python -m pytest tests/test_knowledge_retriever.py -v`
 
 Expected: FAIL with missing retriever.
 
@@ -1548,7 +1624,7 @@ class MockKnowledgeRetriever:
 
 - [ ] **Step 5: Run tests**
 
-Run: `pytest tests/test_knowledge_retriever.py -v`
+Run: `.venv/bin/python -m pytest tests/test_knowledge_retriever.py -v`
 
 Expected: PASS.
 
@@ -1602,7 +1678,7 @@ async def test_dynamic_http_tool_calls_post_and_maps_response():
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pytest tests/test_dynamic_http_tools.py -v`
+Run: `.venv/bin/python -m pytest tests/test_dynamic_http_tools.py -v`
 
 Expected: FAIL with missing dynamic HTTP module.
 
@@ -1684,7 +1760,7 @@ def _map_response(data: dict[str, Any], mapping: dict[str, Any] | None) -> dict[
 
 - [ ] **Step 4: Run tests**
 
-Run: `pytest tests/test_dynamic_http_tools.py -v`
+Run: `.venv/bin/python -m pytest tests/test_dynamic_http_tools.py -v`
 
 Expected: PASS.
 
@@ -1835,7 +1911,7 @@ async def test_tool_registry_includes_core_tools():
 
 - [ ] **Step 6: Run Phase 3 tests**
 
-Run: `pytest tests/test_tools_extract_slots.py tests/test_knowledge_retriever.py tests/test_dynamic_http_tools.py tests/test_harness_flow.py -v`
+Run: `.venv/bin/python -m pytest tests/test_tools_extract_slots.py tests/test_knowledge_retriever.py tests/test_dynamic_http_tools.py tests/test_harness_flow.py -v`
 
 Expected: PASS.
 
@@ -1989,13 +2065,13 @@ class MCPManager:
 
 - [ ] **Step 4: Run MCP-related tests**
 
-Run: `pytest tests/test_harness_flow.py::test_mcp_manager_accepts_stdio_config -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_mcp_manager_accepts_stdio_config -v`
 
 Expected: PASS.
 
 - [ ] **Step 5: Syntax check MCP server**
 
-Run: `python -m py_compile mcp_servers/product_support_server.py`
+Run: `.venv/bin/python -m py_compile mcp_servers/product_support_server.py`
 
 Expected: command exits with code 0.
 
@@ -2055,7 +2131,7 @@ def test_handoff_policy_corrects_inconsistent_state():
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pytest tests/test_handoff_policy.py -v`
+Run: `.venv/bin/python -m pytest tests/test_handoff_policy.py -v`
 
 Expected: FAIL with missing policy.
 
@@ -2101,7 +2177,7 @@ class HandoffPolicy:
 
 - [ ] **Step 4: Run tests**
 
-Run: `pytest tests/test_handoff_policy.py -v`
+Run: `.venv/bin/python -m pytest tests/test_handoff_policy.py -v`
 
 Expected: PASS.
 
@@ -2160,7 +2236,7 @@ async def test_mock_memory_service_retrieves_user_memory():
 
 - [ ] **Step 3: Run test to verify failure**
 
-Run: `pytest tests/test_harness_flow.py::test_mock_memory_service_retrieves_user_memory -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_mock_memory_service_retrieves_user_memory -v`
 
 Expected: FAIL with missing memory service.
 
@@ -2197,7 +2273,7 @@ class MockMemoryService:
 
 - [ ] **Step 5: Run test**
 
-Run: `pytest tests/test_harness_flow.py::test_mock_memory_service_retrieves_user_memory -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_mock_memory_service_retrieves_user_memory -v`
 
 Expected: PASS.
 
@@ -2221,7 +2297,15 @@ Append to `tests/test_harness_flow.py`:
 ```python
 @pytest.mark.asyncio
 async def test_harness_applies_handoff_policy_for_empty_reply():
-    async def fake_runner(state, instructions, user_message, tools, mcp_servers, max_turns):
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
         return AgentRunResult(final_output="")
 
     harness = CustomerServiceHarness(executor=BusinessAgentExecutor(runner=fake_runner))
@@ -2233,7 +2317,7 @@ async def test_harness_applies_handoff_policy_for_empty_reply():
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pytest tests/test_harness_flow.py::test_harness_applies_handoff_policy_for_empty_reply -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_harness_applies_handoff_policy_for_empty_reply -v`
 
 Expected: FAIL because harness does not apply policy.
 
@@ -2269,7 +2353,7 @@ self.handoff_policy.apply(state)
 
 - [ ] **Step 4: Run tests**
 
-Run: `pytest tests/test_harness_flow.py tests/test_handoff_policy.py -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py tests/test_handoff_policy.py -v`
 
 Expected: PASS.
 
@@ -2318,7 +2402,7 @@ def test_customer_service_sync_endpoint():
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `pytest tests/test_demo_cases.py -v`
+Run: `.venv/bin/python -m pytest tests/test_demo_cases.py -v`
 
 Expected: FAIL with missing `app.main`.
 
@@ -2402,7 +2486,7 @@ app.include_router(router)
 
 - [ ] **Step 5: Run tests**
 
-Run: `pytest tests/test_demo_cases.py -v`
+Run: `.venv/bin/python -m pytest tests/test_demo_cases.py -v`
 
 Expected: PASS.
 
@@ -2442,7 +2526,7 @@ async def test_customer_service_hooks_record_tool_events():
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `pytest tests/test_harness_flow.py::test_customer_service_hooks_record_tool_events -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_customer_service_hooks_record_tool_events -v`
 
 Expected: FAIL with missing hooks module.
 
@@ -2498,7 +2582,7 @@ class CustomerServiceRunHooks:
 
 - [ ] **Step 5: Run hooks test**
 
-Run: `pytest tests/test_harness_flow.py::test_customer_service_hooks_record_tool_events -v`
+Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_customer_service_hooks_record_tool_events -v`
 
 Expected: PASS.
 
@@ -2557,7 +2641,15 @@ from app.harness.customer_service_harness import CustomerServiceHarness
 from app.state.request_models import CustomerProfile, CustomerServiceRequest, SlotDefinition
 
 
-async def fake_runner(state, instructions, user_message, tools, mcp_servers, max_turns):
+async def fake_runner(
+    state,
+    instructions,
+    user_message,
+    tools,
+    mcp_servers,
+    max_turns,
+    model,
+):
     if "human" in state.content.lower():
         state.need_handoff_to_human = True
         state.handoff_type = "reply_handoff"
@@ -2596,7 +2688,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 3: Run demo script**
 
-Run: `python scripts/run_demo_cases.py`
+Run: `.venv/bin/python scripts/run_demo_cases.py`
 
 Expected: prints two JSON responses with `status`.
 
@@ -2652,7 +2744,7 @@ async def mock_refund_policy() -> dict:
 
 - [ ] **Step 2: Syntax check**
 
-Run: `python -m py_compile scripts/run_mock_http_server.py`
+Run: `.venv/bin/python -m py_compile scripts/run_mock_http_server.py`
 
 Expected: command exits with code 0.
 
@@ -2739,19 +2831,19 @@ git commit -m "docs: add project readme"
 
 - [ ] **Step 1: Run full test suite**
 
-Run: `pytest -v`
+Run: `.venv/bin/python -m pytest -v`
 
 Expected: all tests PASS.
 
 - [ ] **Step 2: Run demo script**
 
-Run: `python scripts/run_demo_cases.py`
+Run: `.venv/bin/python scripts/run_demo_cases.py`
 
 Expected: JSON responses printed for demo cases.
 
 - [ ] **Step 3: Run API import check**
 
-Run: `python -c "from app.main import app; print(app.title)"`
+Run: `.venv/bin/python -c "from app.main import app; print(app.title)"`
 
 Expected: prints `OpenAI Agents Customer Service`.
 
