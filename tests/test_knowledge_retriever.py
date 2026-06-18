@@ -205,3 +205,104 @@ async def test_kb_id_list_top_k_and_threshold_are_applied(tmp_path):
 
     assert [item["file_id"] for item in result] == ["exact"]
     assert result[0]["score"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_unrelated_or_empty_query_returns_no_documents():
+    retriever = MockKnowledgeRetriever()
+
+    unrelated = await retriever.retrieve(
+        tenant_id="tenant_a",
+        query="completely unrelated banana",
+    )
+    empty = await retriever.retrieve(tenant_id="tenant_a", query="")
+
+    assert unrelated == []
+    assert empty == []
+
+
+@pytest.mark.asyncio
+async def test_explicit_empty_knowledge_scope_is_fail_closed():
+    retriever = MockKnowledgeRetriever()
+
+    no_items = await retriever.retrieve(
+        tenant_id="tenant_a",
+        query="return policy",
+        knowledge_config=KnowledgeConfig(knowledges=[]),
+    )
+    empty_item = await retriever.retrieve(
+        tenant_id="tenant_a",
+        query="return policy",
+        knowledge_config=KnowledgeConfig(
+            knowledges=[KnowledgeItemConfig()],
+        ),
+    )
+
+    assert no_items == []
+    assert empty_item == []
+
+
+@pytest.mark.asyncio
+async def test_default_data_directory_does_not_depend_on_cwd(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    result = await MockKnowledgeRetriever().retrieve(
+        tenant_id="tenant_a",
+        query="return policy",
+    )
+
+    assert result
+    assert result[0]["file_id"] == "return_policy"
+
+
+@pytest.mark.asyncio
+async def test_corrupt_knowledge_files_are_skipped(tmp_path):
+    data_dir = tmp_path / "knowledge"
+    data_dir.mkdir()
+    (data_dir / "broken.json").write_text("{broken", encoding="utf-8")
+    (data_dir / "object.json").write_text('{"not": "a list"}', encoding="utf-8")
+    (data_dir / "valid.json").write_text(
+        json.dumps(
+            [
+                {
+                    "tenant_id": "tenant_a",
+                    "kb_id": "kb_support",
+                    "file_id": "manual",
+                    "text": "Restart the device.",
+                    "keywords": ["restart"],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = await MockKnowledgeRetriever(data_dir=data_dir).retrieve(
+        tenant_id="tenant_a",
+        query="restart",
+    )
+
+    assert [item["file_id"] for item in result] == ["manual"]
+
+
+@pytest.mark.asyncio
+async def test_non_positive_top_k_returns_no_documents(tmp_path):
+    data_dir = _write_docs(
+        tmp_path,
+        [
+            {
+                "tenant_id": "tenant_a",
+                "kb_id": "kb_support",
+                "file_id": "manual",
+                "text": "Restart the device.",
+                "keywords": ["restart"],
+            }
+        ],
+    )
+
+    result = await MockKnowledgeRetriever(data_dir=data_dir).retrieve(
+        tenant_id="tenant_a",
+        query="restart",
+        knowledge_config=KnowledgeConfig(top_k=0),
+    )
+
+    assert result == []

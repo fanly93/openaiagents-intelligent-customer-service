@@ -7,8 +7,11 @@ from app.state.request_models import KnowledgeConfig, KnowledgeItemConfig
 
 
 class MockKnowledgeRetriever:
-    def __init__(self, data_dir: str | Path = "data/knowledge") -> None:
-        self.data_dir = Path(data_dir)
+    def __init__(self, data_dir: str | Path | None = None) -> None:
+        project_root = Path(__file__).resolve().parents[2]
+        self.data_dir = (
+            Path(data_dir) if data_dir is not None else project_root / "data/knowledge"
+        )
 
     async def retrieve(
         self,
@@ -17,8 +20,13 @@ class MockKnowledgeRetriever:
         knowledge_config: KnowledgeConfig | None = None,
     ) -> list[dict[str, Any]]:
         top_k = knowledge_config.top_k if knowledge_config else 5
-        threshold = knowledge_config.threshold if knowledge_config else 0.0
+        if top_k <= 0:
+            return []
+        threshold = knowledge_config.threshold if knowledge_config else 0.1
+        threshold = min(max(threshold, 0.0), 1.0)
         query_terms = self._terms(query)
+        if not query_terms:
+            return []
 
         scored: list[tuple[float, dict[str, Any]]] = []
         for doc in self._load_docs():
@@ -34,7 +42,7 @@ class MockKnowledgeRetriever:
                 for term in self._terms(str(keyword))
             )
             score = len(query_terms & searchable_terms) / max(len(query_terms), 1)
-            if score >= threshold:
+            if score > 0 and score >= threshold:
                 result = dict(doc)
                 result["score"] = round(score, 4)
                 scored.append((score, result))
@@ -45,8 +53,13 @@ class MockKnowledgeRetriever:
     def _load_docs(self) -> list[dict[str, Any]]:
         docs: list[dict[str, Any]] = []
         for path in sorted(self.data_dir.glob("*.json")):
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-            docs.extend(loaded)
+            try:
+                loaded = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(loaded, list):
+                continue
+            docs.extend(item for item in loaded if isinstance(item, dict))
         return docs
 
     @classmethod
@@ -55,8 +68,10 @@ class MockKnowledgeRetriever:
         doc: dict[str, Any],
         config: KnowledgeConfig | None,
     ) -> bool:
-        if config is None or not config.knowledges:
+        if config is None:
             return True
+        if not config.knowledges:
+            return False
         return any(cls._matches_knowledge_item(doc, item) for item in config.knowledges)
 
     @staticmethod
@@ -73,8 +88,11 @@ class MockKnowledgeRetriever:
 
         if kb_ids and doc.get("kb_id") not in kb_ids:
             return False
-        if not item.isAll and item.fileIds and doc.get("file_id") not in item.fileIds:
-            return False
+        if not item.isAll:
+            if not item.fileIds:
+                return False
+            if doc.get("file_id") not in item.fileIds:
+                return False
         return True
 
     @staticmethod
