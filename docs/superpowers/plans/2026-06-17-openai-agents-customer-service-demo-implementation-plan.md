@@ -2100,7 +2100,7 @@ git commit -m "feat: add runnable local mcp server"
 - Create: `app/harness/handoff_policy.py`
 - Test: `tests/test_handoff_policy.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_handoff_policy.py`:
 
@@ -2129,13 +2129,13 @@ def test_handoff_policy_corrects_inconsistent_state():
     assert state.handoff_type == "reply_handoff"
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_handoff_policy.py -v`
 
 Expected: FAIL with missing policy.
 
-- [ ] **Step 3: Implement policy**
+- [x] **Step 3: Implement policy**
 
 Create `app/harness/handoff_policy.py`:
 
@@ -2175,13 +2175,13 @@ class HandoffPolicy:
         state.handoff_reason = state.handoff_reason or reason
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_handoff_policy.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/harness/handoff_policy.py tests/test_handoff_policy.py
@@ -2195,7 +2195,7 @@ git commit -m "feat: add handoff policy"
 - Create: `data/mock_memories.json`
 - Test: `tests/test_harness_flow.py`
 
-- [ ] **Step 1: Add memory data**
+- [x] **Step 1: Add memory data**
 
 Create `data/mock_memories.json`:
 
@@ -2214,7 +2214,7 @@ Create `data/mock_memories.json`:
 }
 ```
 
-- [ ] **Step 2: Add failing memory test**
+- [x] **Step 2: Add failing memory test**
 
 Append to `tests/test_harness_flow.py`:
 
@@ -2234,13 +2234,13 @@ async def test_mock_memory_service_retrieves_user_memory():
     assert "E01" in memories[0]["memory"]
 ```
 
-- [ ] **Step 3: Run test to verify failure**
+- [x] **Step 3: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_mock_memory_service_retrieves_user_memory -v`
 
 Expected: FAIL with missing memory service.
 
-- [ ] **Step 4: Implement memory service**
+- [x] **Step 4: Implement memory service**
 
 Create `app/retrieval/memory_service.py`:
 
@@ -2271,13 +2271,13 @@ class MockMemoryService:
         return [item for _, item in scored[:top_k]]
 ```
 
-- [ ] **Step 5: Run test**
+- [x] **Step 5: Run test**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_mock_memory_service_retrieves_user_memory -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/retrieval/memory_service.py data/mock_memories.json tests/test_harness_flow.py
@@ -2290,7 +2290,7 @@ git commit -m "feat: add mock memory service"
 - Modify: `app/harness/customer_service_harness.py`
 - Test: `tests/test_harness_flow.py`
 
-- [ ] **Step 1: Add failing integration test**
+- [x] **Step 1: Add failing integration test**
 
 Append to `tests/test_harness_flow.py`:
 
@@ -2315,13 +2315,13 @@ async def test_harness_applies_handoff_policy_for_empty_reply():
     assert response.handoff_type == "reply_handoff"
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_harness_applies_handoff_policy_for_empty_reply -v`
 
 Expected: FAIL because harness does not apply policy.
 
-- [ ] **Step 3: Modify harness to apply policy**
+- [x] **Step 3: Modify harness to apply policy**
 
 Update `app/harness/customer_service_harness.py` constructor to include `HandoffPolicy`, then apply it after reply processing:
 
@@ -2351,13 +2351,13 @@ After `state.final_reply = ...`, add:
 self.handoff_policy.apply(state)
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py tests/test_handoff_policy.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/harness/customer_service_harness.py tests/test_harness_flow.py
@@ -2371,7 +2371,7 @@ git commit -m "feat: apply handoff policy in harness"
 - Create: `app/api/routes.py`
 - Test: `tests/test_demo_cases.py`
 
-- [ ] **Step 1: Write failing API tests**
+- [x] **Step 1: Write failing API tests**
 
 Create `tests/test_demo_cases.py`:
 
@@ -2400,13 +2400,13 @@ def test_customer_service_sync_endpoint():
     assert response.json()["status"] in {"success", "error"}
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_demo_cases.py -v`
 
 Expected: FAIL with missing `app.main`.
 
-- [ ] **Step 3: Implement routes**
+- [x] **Step 3: Implement routes**
 
 Create `app/api/routes.py`:
 
@@ -2469,7 +2469,7 @@ async def emailv4(payload: dict, background_tasks: BackgroundTasks) -> CustomerS
     return await respond(request, background_tasks)
 ```
 
-- [ ] **Step 4: Implement app entrypoint**
+- [x] **Step 4: Implement app entrypoint**
 
 Create `app/main.py`:
 
@@ -2484,13 +2484,13 @@ app = FastAPI(title=settings.app_name)
 app.include_router(router)
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `.venv/bin/python -m pytest tests/test_demo_cases.py -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/main.py app/api/routes.py tests/test_demo_cases.py
@@ -2504,7 +2504,7 @@ git commit -m "feat: add fastapi routes"
 - Modify: `app/observability/tracing.py`
 - Modify: `tests/test_harness_flow.py`
 
-- [ ] **Step 1: Add hooks test**
+- [x] **Step 1: Add hooks test**
 
 Append to `tests/test_harness_flow.py`:
 
@@ -2524,13 +2524,13 @@ async def test_customer_service_hooks_record_tool_events():
     assert state.events[0].name == "tool_start"
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_customer_service_hooks_record_tool_events -v`
 
 Expected: FAIL with missing hooks module.
 
-- [ ] **Step 3: Add Langfuse optional adapter to tracing**
+- [x] **Step 3: Add Langfuse optional adapter to tracing**
 
 Extend `app/observability/tracing.py`:
 
@@ -2553,7 +2553,7 @@ class OptionalLangfuseTracer:
             return False
 ```
 
-- [ ] **Step 4: Implement hook helper**
+- [x] **Step 4: Implement hook helper**
 
 Create `app/observability/hooks.py`:
 
@@ -2580,13 +2580,13 @@ class CustomerServiceRunHooks:
         state.events.append(EventSummary(name=event_name, detail=payload))
 ```
 
-- [ ] **Step 5: Run hooks test**
+- [x] **Step 5: Run hooks test**
 
 Run: `.venv/bin/python -m pytest tests/test_harness_flow.py::test_customer_service_hooks_record_tool_events -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/observability/hooks.py app/observability/tracing.py tests/test_harness_flow.py
@@ -2595,8 +2595,8 @@ git commit -m "feat: add customer service observability hooks"
 
 ### Phase 4 Stop and Report
 
-- [ ] Stop after Task 4.5.
-- [ ] Report changed files, tests run, commits created, and known API/async limitations.
+- [x] Stop after Task 4.5.
+- [x] Report changed files, tests run, commits created, and known API/async limitations.
 - [ ] Wait for user approval before Phase 5.
 
 ---
