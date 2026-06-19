@@ -1,14 +1,18 @@
 {
-  "A100": {
-    "order_id": "A100",
-    "status": "shipped",
-    "items": ["Airdog X5"],
-    "total": 299.0
+  "tenant_a": {
+    "A100": {
+      "order_id": "A100",
+      "status": "shipped",
+      "items": ["Airdog X5"],
+      "total": 299.0
+    }
   },
-  "WIG200": {
-    "order_id": "WIG200",
-    "status": "processing",
-    "items": ["Body Wave Wig"],
-    "total": 129.0
+  "tenant_b": {
+    "WIG200": {
+      "order_id": "WIG200",
+      "status": "processing",
+      "items": ["Body Wave Wig"],
+      "total": 129.0
+    }
   }
 }

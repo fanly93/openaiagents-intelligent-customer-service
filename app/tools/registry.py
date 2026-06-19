@@ -18,6 +18,7 @@ class ToolSetup:
     tools: list[Any] = field(default_factory=list)
     tool_guide: str = ""
     enabled_names: list[str] = field(default_factory=list)
+    errors: list[dict[str, str]] = field(default_factory=list)
 
 
 class ToolRegistry:
@@ -25,6 +26,9 @@ class ToolRegistry:
         self,
         knowledge_retriever: MockKnowledgeRetriever | None = None,
         data_dir: str | Path | None = None,
+        http_tool_registry: (
+            dict[str, dict[str, HttpToolConfig]] | None
+        ) = None,
     ) -> None:
         self.knowledge_retriever = knowledge_retriever or MockKnowledgeRetriever()
         self.data_dir = (
@@ -32,6 +36,13 @@ class ToolRegistry:
             if data_dir is not None
             else Path(__file__).resolve().parents[2] / "data"
         )
+        self.http_tool_registry = {
+            tenant_id: {
+                name: config.model_copy(deep=True)
+                for name, config in tools.items()
+            }
+            for tenant_id, tools in (http_tool_registry or {}).items()
+        }
 
     async def prepare(self, request: CustomerServiceRequest) -> ToolSetup:
         tools = [
@@ -39,6 +50,7 @@ class ToolRegistry:
             self._rag_tool(request),
             self._handoff_tool(),
         ]
+        errors: list[dict[str, str]] = []
 
         optional_factories = {
             "check_order_status": self._order_tool,
@@ -49,7 +61,20 @@ class ToolRegistry:
             if factory and name not in {tool.name for tool in tools}:
                 tools.append(factory())
 
-        for config in request.http_tools:
+        trusted_http_tools = self.http_tool_registry.get(
+            request.tenant_id,
+            {},
+        )
+        for selection in request.http_tools:
+            config = trusted_http_tools.get(selection.name)
+            if config is None:
+                errors.append(
+                    {
+                        "name": selection.name,
+                        "error": "untrusted_http_tool",
+                    }
+                )
+                continue
             if config.name not in {tool.name for tool in tools}:
                 tools.append(self._dynamic_http_tool(config))
 
@@ -61,6 +86,7 @@ class ToolRegistry:
             tools=tools,
             tool_guide=guide,
             enabled_names=enabled_names,
+            errors=errors,
         )
 
     @staticmethod
@@ -145,7 +171,10 @@ class ToolRegistry:
             order_id: str,
         ) -> dict[str, Any]:
             """Look up an order by order id."""
-            result = orders.get(
+            tenant_orders = orders.get(context.context.tenant_id, {})
+            if not isinstance(tenant_orders, dict):
+                tenant_orders = {}
+            result = tenant_orders.get(
                 order_id,
                 {"error": "order_not_found", "order_id": order_id},
             )
@@ -170,7 +199,13 @@ class ToolRegistry:
             order_id: str,
         ) -> dict[str, Any]:
             """Look up shipment status by order id."""
-            result = logistics.get(
+            tenant_logistics = logistics.get(
+                context.context.tenant_id,
+                {},
+            )
+            if not isinstance(tenant_logistics, dict):
+                tenant_logistics = {}
+            result = tenant_logistics.get(
                 order_id,
                 {"error": "shipment_not_found", "order_id": order_id},
             )

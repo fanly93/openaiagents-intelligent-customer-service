@@ -1,8 +1,18 @@
 {
-  "A100": {
-    "order_id": "A100",
-    "carrier": "DHL",
-    "tracking_number": "DHL123456",
-    "status": "in_transit"
+  "tenant_a": {
+    "A100": {
+      "order_id": "A100",
+      "carrier": "DHL",
+      "tracking_number": "DHL123456",
+      "status": "in_transit"
+    }
+  },
+  "tenant_b": {
+    "WIG200": {
+      "order_id": "WIG200",
+      "carrier": "UPS",
+      "tracking_number": "UPS200",
+      "status": "label_created"
+    }
   }
 }

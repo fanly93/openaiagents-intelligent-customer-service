@@ -1,5 +1,6 @@
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -258,25 +259,28 @@ async def test_customer_service_harness_returns_traced_error_response():
 
 @pytest.mark.asyncio
 async def test_tool_registry_builds_real_core_and_request_scoped_tools():
-    setup = await ToolRegistry().prepare(
+    trusted_http_tool = HttpToolConfig(
+        name="lookup_return_case",
+        description="Look up a return case",
+        url="https://mock.local/returns",
+        request_params=[
+            HttpToolParam(
+                name="case_id",
+                description="Return case id",
+                required=True,
+            )
+        ],
+    )
+    setup = await ToolRegistry(
+        http_tool_registry={
+            "tenant_a": {"lookup_return_case": trusted_http_tool}
+        }
+    ).prepare(
         CustomerServiceRequest(
             tenant_id="tenant_a",
             content="Where is order A100?",
             tools=["check_order_status"],
-            http_tools=[
-                HttpToolConfig(
-                    name="lookup_return_case",
-                    description="Look up a return case",
-                    url="https://mock.local/returns",
-                    request_params=[
-                        HttpToolParam(
-                            name="case_id",
-                            description="Return case id",
-                            required=True,
-                        )
-                    ],
-                )
-            ],
+            http_tools=[trusted_http_tool],
         )
     )
 
@@ -360,24 +364,28 @@ async def test_harness_passes_prepared_tools_and_guide_to_executor():
 async def test_mcp_manager_builds_supported_transports_and_filters():
     manager = MCPManager(
         server_registry={
-            "product_support": MCPServerDefinition(
-                type="stdio",
-                config={
-                    "command": sys.executable,
-                    "args": ["mcp_servers/product_support_server.py"],
-                },
-            ),
-            "remote_sse": MCPServerDefinition(
-                type="sse",
-                config={"url": "https://mcp.example.com/sse"},
-            ),
-            "remote_http": MCPServerDefinition(
-                type="streamable_http",
-                config={"url": "https://mcp.example.com/mcp"},
-            ),
+            "tenant_a": {
+                "product_support": MCPServerDefinition(
+                    type="stdio",
+                    config={
+                        "command": sys.executable,
+                        "args": ["mcp_servers/product_support_server.py"],
+                        "env": {"TRUSTED_MODE": "enabled"},
+                    },
+                ),
+                "remote_sse": MCPServerDefinition(
+                    type="sse",
+                    config={"url": "https://mcp.example.com/sse"},
+                ),
+                "remote_http": MCPServerDefinition(
+                    type="streamable_http",
+                    config={"url": "https://mcp.example.com/mcp"},
+                ),
+            }
         }
     )
     setup = await manager.prepare(
+        "tenant_a",
         [
             MCPServerConfig(
                 name="product_support",
@@ -385,6 +393,7 @@ async def test_mcp_manager_builds_supported_transports_and_filters():
                 config={
                     "command": "/bin/sh",
                     "args": ["-c", "echo compromised"],
+                    "env": {"TRUSTED_MODE": "disabled"},
                 },
                 tools_filter={
                     "allowed_tool_names": ["lookup_product_manual"],
@@ -415,6 +424,7 @@ async def test_mcp_manager_builds_supported_transports_and_filters():
     assert setup.servers[0].params.args == [
         "mcp_servers/product_support_server.py"
     ]
+    assert setup.servers[0].params.env == {"TRUSTED_MODE": "enabled"}
     assert setup.servers[0].tool_filter == {
         "allowed_tool_names": ["lookup_product_manual"],
         "blocked_tool_names": ["check_warranty_policy"],
@@ -425,6 +435,7 @@ async def test_mcp_manager_builds_supported_transports_and_filters():
 async def test_local_stdio_mcp_server_is_runnable():
     manager = MCPManager()
     setup = await manager.prepare(
+        "tenant_a",
         [
             MCPServerConfig(
                 name="product_support",
@@ -451,6 +462,7 @@ async def test_local_stdio_mcp_server_is_runnable():
 async def test_local_stdio_mcp_server_applies_tool_filter():
     manager = MCPManager()
     setup = await manager.prepare(
+        "tenant_a",
         [
             MCPServerConfig(
                 name="product_support",
@@ -474,8 +486,28 @@ async def test_local_stdio_mcp_server_applies_tool_filter():
 
 @pytest.mark.asyncio
 async def test_local_stdio_mcp_server_applies_tool_overrides():
-    manager = MCPManager()
+    project_root = Path(__file__).resolve().parents[1]
+    manager = MCPManager(
+        server_registry={
+            "tenant_a": {
+                "product_support": MCPServerDefinition(
+                    type="stdio",
+                    config={
+                        "command": sys.executable,
+                        "args": [
+                            str(
+                                project_root
+                                / "mcp_servers/product_support_server.py"
+                            )
+                        ],
+                    },
+                    allow_request_tool_overrides=True,
+                )
+            }
+        }
+    )
     setup = await manager.prepare(
+        "tenant_a",
         [
             MCPServerConfig(
                 name="product_support",
@@ -514,6 +546,7 @@ async def test_local_stdio_mcp_server_applies_tool_overrides():
 @pytest.mark.asyncio
 async def test_mcp_manager_skips_invalid_config_without_dropping_valid_servers():
     setup = await MCPManager().prepare(
+        "tenant_a",
         [
             MCPServerConfig(
                 name="invalid",
@@ -552,6 +585,7 @@ def test_mcp_tool_override_rejects_malformed_parameter_shapes():
 @pytest.mark.asyncio
 async def test_mcp_manager_reports_type_mismatch_without_building_server():
     setup = await MCPManager().prepare(
+        "tenant_a",
         [
             MCPServerConfig(
                 name="product_support",
@@ -573,14 +607,17 @@ async def test_mcp_manager_reports_type_mismatch_without_building_server():
 async def test_mcp_manager_reports_missing_trusted_server_endpoint():
     manager = MCPManager(
         server_registry={
-            "broken_remote": MCPServerDefinition(
-                type="streamable_http",
-                config={},
-            )
+            "tenant_a": {
+                "broken_remote": MCPServerDefinition(
+                    type="streamable_http",
+                    config={},
+                )
+            }
         }
     )
 
     setup = await manager.prepare(
+        "tenant_a",
         [
             MCPServerConfig(
                 name="broken_remote",
@@ -680,17 +717,20 @@ async def test_rag_tool_degrades_to_empty_result_on_provider_failure():
     ["not-json", "[]", "null"],
 )
 async def test_dynamic_function_tool_returns_structured_input_error(raw_input):
-    setup = await ToolRegistry().prepare(
+    trusted_http_tool = HttpToolConfig(
+        name="lookup_return",
+        description="Look up return",
+        url="https://mock.local/returns",
+    )
+    setup = await ToolRegistry(
+        http_tool_registry={
+            "tenant_a": {"lookup_return": trusted_http_tool}
+        }
+    ).prepare(
         CustomerServiceRequest(
             tenant_id="tenant_a",
             content="Look up return",
-            http_tools=[
-                HttpToolConfig(
-                    name="lookup_return",
-                    description="Look up return",
-                    url="https://mock.local/returns",
-                )
-            ],
+            http_tools=[trusted_http_tool],
         )
     )
     tool = next(item for item in setup.tools if item.name == "lookup_return")
@@ -1130,3 +1170,93 @@ def test_optional_langfuse_tracer_stays_disabled_without_credentials(
     assert tracer.try_start() is False
     assert tracer.enabled is False
     assert tracer.client is None
+
+
+def test_optional_langfuse_tracer_records_events_and_flushes(monkeypatch):
+    calls = []
+
+    class FakeTrace:
+        def event(self, **kwargs):
+            calls.append(("event", kwargs))
+
+    class FakeClient:
+        def trace(self, **kwargs):
+            calls.append(("trace", kwargs))
+            return FakeTrace()
+
+        def flush(self):
+            calls.append(("flush", {}))
+
+    monkeypatch.setattr(
+        "app.config.get_settings",
+        lambda: SimpleNamespace(
+            langfuse_public_key="public",
+            langfuse_secret_key="secret",
+            langfuse_host="https://langfuse.example",
+        ),
+    )
+    tracer = OptionalLangfuseTracer(
+        client_factory=lambda **kwargs: FakeClient()
+    )
+
+    assert tracer.try_start(request_id="req_1") is True
+    tracer.record_event(
+        "tool_start",
+        {"tool_name": "get_rag_knowledge"},
+        "started",
+    )
+    tracer.flush()
+
+    assert calls[0] == (
+        "trace",
+        {
+            "name": "customer_service_request",
+            "id": "req_1",
+        },
+    )
+    assert calls[1][0] == "event"
+    assert calls[1][1]["name"] == "tool_start"
+    assert calls[-1][0] == "flush"
+
+
+@pytest.mark.asyncio
+async def test_harness_forwards_local_events_to_langfuse_adapter():
+    events = []
+
+    class FakeExternalTracer:
+        def try_start(self, request_id=None):
+            events.append(("start", request_id))
+            return True
+
+        def record_event(self, name, detail, status):
+            events.append((name, detail, status))
+
+        def flush(self):
+            events.append(("flush",))
+
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        return AgentRunResult(final_output="Completed response.")
+
+    response = await CustomerServiceHarness(
+        executor=BusinessAgentExecutor(runner=fake_runner),
+        external_tracer=FakeExternalTracer(),
+    ).run(
+        CustomerServiceRequest(
+            request_id="req_1",
+            tenant_id="tenant_a",
+            content="Help",
+        )
+    )
+
+    assert response.status == "success"
+    assert events[0] == ("start", "req_1")
+    assert any(event[0] == "request_start" for event in events)
+    assert events[-1] == ("flush",)

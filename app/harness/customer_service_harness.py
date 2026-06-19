@@ -9,7 +9,7 @@ from app.harness.reply_post_processor import ReplyPostProcessor
 from app.harness.state_reducer import StateReducer
 from app.observability.perf import PerformanceTracker
 from app.observability.hooks import CustomerServiceRunHooks
-from app.observability.tracing import LocalTracer
+from app.observability.tracing import LocalTracer, OptionalLangfuseTracer
 from app.retrieval.memory_service import MockMemoryService
 from app.state.conversation_state import CustomerServiceState, EventSummary
 from app.state.request_models import CustomerServiceRequest
@@ -29,6 +29,7 @@ class CustomerServiceHarness:
         mcp_manager: MCPManager | None = None,
         handoff_policy: HandoffPolicy | None = None,
         memory_service: Any | None = None,
+        external_tracer: Any | None = None,
     ) -> None:
         self.executor = executor or BusinessAgentExecutor()
         self.prompt_assembler = prompt_assembler or PromptAssembler()
@@ -38,6 +39,7 @@ class CustomerServiceHarness:
         self.mcp_manager = mcp_manager or MCPManager()
         self.handoff_policy = handoff_policy or HandoffPolicy()
         self.memory_service = memory_service or MockMemoryService()
+        self.external_tracer = external_tracer or OptionalLangfuseTracer()
 
     async def run(
         self,
@@ -45,7 +47,11 @@ class CustomerServiceHarness:
     ) -> CustomerServiceResponse:
         start = perf_counter()
         tracker = PerformanceTracker()
-        tracer = LocalTracer(request_id=request.request_id)
+        self.external_tracer.try_start(request_id=request.request_id)
+        tracer = LocalTracer(
+            request_id=request.request_id,
+            external_tracer=self.external_tracer,
+        )
         hooks = CustomerServiceRunHooks(tracer=tracer)
         state = self._init_state(request)
 
@@ -59,10 +65,18 @@ class CustomerServiceHarness:
                 tool_setup = await self.tool_registry.prepare(request)
             tracer.record(
                 "tool_registry_prepare",
-                {"enabled_names": tool_setup.enabled_names},
+                {
+                    "enabled_names": tool_setup.enabled_names,
+                    "configuration_errors": self._setup_errors(
+                        tool_setup.errors
+                    ),
+                },
             )
             with tracker.track("prepare_mcp"):
-                mcp_setup = await self.mcp_manager.prepare(request.mcp_servers)
+                mcp_setup = await self.mcp_manager.prepare(
+                    request.tenant_id,
+                    request.mcp_servers,
+                )
             tracer.record(
                 "mcp_connect",
                 {
@@ -165,6 +179,18 @@ class CustomerServiceHarness:
         if model not in allowed_models:
             raise ValueError("requested model is not allowed")
 
+    @staticmethod
+    def _setup_errors(
+        errors: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        return [
+            {
+                "name": str(item.get("name", "")),
+                "error": str(item.get("error", "configuration_error")),
+            }
+            for item in errors
+        ]
+
     async def _preload_memory(
         self,
         request: CustomerServiceRequest,
@@ -210,11 +236,13 @@ class CustomerServiceHarness:
     ) -> CustomerServiceResponse:
         state.performance_stats = tracker.summary()
         self._sync_trace_events(state, tracer)
-        return self.state_reducer.build_response(
+        response = self.state_reducer.build_response(
             state,
             processing_time=round(perf_counter() - start, 6),
             error=error,
         )
+        self.external_tracer.flush()
+        return response
 
     @staticmethod
     def _init_state(request: CustomerServiceRequest) -> CustomerServiceState:
