@@ -2611,7 +2611,7 @@ git commit -m "feat: add customer service observability hooks"
 - Create: `data/reply_templates.json`
 - Create: `scripts/run_demo_cases.py`
 
-- [ ] **Step 1: Create templates**
+- [x] **Step 1: Create templates**
 
 Create `data/reply_templates.json`:
 
@@ -2628,7 +2628,7 @@ Create `data/reply_templates.json`:
 }
 ```
 
-- [ ] **Step 2: Create demo script**
+- [x] **Step 2: Create demo script**
 
 Create `scripts/run_demo_cases.py`:
 
@@ -2686,13 +2686,13 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-- [ ] **Step 3: Run demo script**
+- [x] **Step 3: Run demo script**
 
 Run: `.venv/bin/python scripts/run_demo_cases.py`
 
 Expected: prints two JSON responses with `status`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add data/reply_templates.json scripts/run_demo_cases.py
@@ -2704,7 +2704,7 @@ git commit -m "feat: add demo cases script"
 **Files:**
 - Create: `scripts/run_mock_http_server.py`
 
-- [ ] **Step 1: Create mock HTTP server**
+- [x] **Step 1: Create mock HTTP server**
 
 Create `scripts/run_mock_http_server.py`:
 
@@ -2742,13 +2742,13 @@ async def mock_refund_policy() -> dict:
     return {"code": 200, "data": {"policy": "Returns are accepted within 30 days."}}
 ```
 
-- [ ] **Step 2: Syntax check**
+- [x] **Step 2: Syntax check**
 
 Run: `.venv/bin/python -m py_compile scripts/run_mock_http_server.py`
 
 Expected: command exits with code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add scripts/run_mock_http_server.py
@@ -2760,7 +2760,7 @@ git commit -m "feat: add mock business api server"
 **Files:**
 - Create: `README.md`
 
-- [ ] **Step 1: Write README**
+- [x] **Step 1: Write README**
 
 Create `README.md`:
 
@@ -2817,7 +2817,7 @@ pytest -v
 See `docs/superpowers/specs/2026-06-17-openai-agents-customer-service-design.md`.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add README.md
@@ -2829,31 +2829,31 @@ git commit -m "docs: add project readme"
 **Files:**
 - Modify only if verification finds concrete bugs.
 
-- [ ] **Step 1: Run full test suite**
+- [x] **Step 1: Run full test suite**
 
 Run: `.venv/bin/python -m pytest -v`
 
 Expected: all tests PASS.
 
-- [ ] **Step 2: Run demo script**
+- [x] **Step 2: Run demo script**
 
 Run: `.venv/bin/python scripts/run_demo_cases.py`
 
 Expected: JSON responses printed for demo cases.
 
-- [ ] **Step 3: Run API import check**
+- [x] **Step 3: Run API import check**
 
 Run: `.venv/bin/python -c "from app.main import app; print(app.title)"`
 
 Expected: prints `OpenAI Agents Customer Service`.
 
-- [ ] **Step 4: Check git status**
+- [x] **Step 4: Check git status**
 
 Run: `git status --short`
 
 Expected: no unstaged or uncommitted changes.
 
-- [ ] **Step 5: Final phase report**
+- [x] **Step 5: Final phase report**
 
 Report:
 
@@ -2865,6 +2865,6 @@ Report:
 
 ### Phase 5 Stop and Report
 
-- [ ] Stop after Task 5.4.
-- [ ] Report final completion status.
-- [ ] Do not merge to `main` unless user explicitly requests it.
+- [x] Stop after Task 5.4.
+- [x] Report final completion status.
+- [x] Do not merge to `main` unless user explicitly requests it.
