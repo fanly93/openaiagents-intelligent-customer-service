@@ -2,10 +2,14 @@
 
 ## Specification Authority
 
-- The approved project design is:
+- The approved Phase 1-5 project design is:
   `docs/superpowers/specs/2026-06-17-openai-agents-customer-service-design.md`.
-- The active implementation plan is:
+- The approved Phase 6 validation design is:
+  `docs/superpowers/specs/2026-06-20-phase6-live-model-and-e2e-validation-design.md`.
+- The completed Phase 1-5 implementation plan is:
   `docs/superpowers/plans/2026-06-17-openai-agents-customer-service-demo-implementation-plan.md`.
+- The active Phase 6 implementation plan is:
+  `docs/superpowers/plans/2026-06-20-phase6-live-model-and-e2e-validation-implementation-plan.md`.
 - Treat those documents as the current implementation baseline.
 - Parent-directory architecture notes are exploratory recommendations. They do not
   replace the approved project spec or plan unless the user explicitly approves a
