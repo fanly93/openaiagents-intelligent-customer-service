@@ -10,7 +10,8 @@ from app.harness.customer_service_harness import CustomerServiceHarness
 from app.harness.prompt_assembler import PromptAssembler
 from app.harness.state_reducer import StateReducer
 from app.observability.perf import PerformanceTracker
-from app.observability.tracing import LocalTracer
+from app.observability.hooks import CustomerServiceRunHooks
+from app.observability.tracing import LocalTracer, OptionalLangfuseTracer
 from app.retrieval.memory_service import MockMemoryService
 from app.state.conversation_state import CustomerServiceState
 from app.state.request_models import (
@@ -1006,3 +1007,126 @@ async def test_harness_marks_agent_execution_failure_for_reply_handoff():
     assert response.need_handoff_to_human is True
     assert response.handoff_type == "reply_handoff"
     assert response.handoff_reason
+
+
+@pytest.mark.asyncio
+async def test_customer_service_hooks_record_tool_events():
+    state = CustomerServiceState(
+        tenant_id="tenant_a",
+        channel="email",
+        content="Help",
+    )
+    tracer = LocalTracer(request_id="req_1")
+    hooks = CustomerServiceRunHooks(tracer=tracer)
+
+    await hooks.record_tool_event(
+        state,
+        "tool_start",
+        "get_rag_knowledge",
+        {"query": "return"},
+    )
+
+    assert tracer.events[0].name == "tool_start"
+    assert tracer.events[0].detail["tool_name"] == "get_rag_knowledge"
+    assert state.events[0].name == "tool_start"
+
+
+@pytest.mark.asyncio
+async def test_customer_service_hooks_implement_sdk_lifecycle_callbacks():
+    state = CustomerServiceState(
+        tenant_id="tenant_a",
+        content="Help",
+    )
+    tracer = LocalTracer(request_id="req_1")
+    hooks = CustomerServiceRunHooks(tracer=tracer)
+    context = SimpleNamespace(context=state)
+    agent = SimpleNamespace(name="Customer Service Agent")
+    tool = SimpleNamespace(name="get_rag_knowledge")
+
+    await hooks.on_agent_start(context, agent)
+    await hooks.on_tool_start(context, agent, tool)
+    await hooks.on_tool_end(context, agent, tool, {"items": 1})
+    await hooks.on_agent_end(context, agent, "Completed")
+
+    assert [event.name for event in tracer.events] == [
+        "agent_start",
+        "tool_start",
+        "tool_end",
+        "agent_end",
+    ]
+    assert state.events[-1].name == "agent_end"
+
+
+@pytest.mark.asyncio
+async def test_harness_passes_run_hooks_to_executor():
+    captured = {}
+
+    class CapturingExecutor:
+        async def run(self, **kwargs):
+            captured.update(kwargs)
+            return AgentRunResult(final_output="Completed response.")
+
+    response = await CustomerServiceHarness(
+        executor=CapturingExecutor()
+    ).run(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Help",
+        )
+    )
+
+    assert response.status == "success"
+    assert isinstance(captured["hooks"], CustomerServiceRunHooks)
+
+
+@pytest.mark.asyncio
+async def test_openai_executor_passes_hooks_to_runner(monkeypatch):
+    import agents
+
+    captured = {}
+
+    async def fake_run(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            final_output="Completed",
+            context_wrapper=SimpleNamespace(usage=None),
+            raw_responses=[],
+        )
+
+    monkeypatch.setattr(agents.Runner, "run", fake_run)
+    state = CustomerServiceState(
+        tenant_id="tenant_a",
+        content="Help",
+    )
+    hooks = CustomerServiceRunHooks(LocalTracer("req_1"))
+
+    result = await BusinessAgentExecutor().run(
+        state=state,
+        instructions="Help the customer.",
+        user_message="Help",
+        tools=[],
+        mcp_servers=[],
+        max_turns=2,
+        hooks=hooks,
+    )
+
+    assert result.final_output == "Completed"
+    assert captured["hooks"] is hooks
+
+
+def test_optional_langfuse_tracer_stays_disabled_without_credentials(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "app.config.get_settings",
+        lambda: SimpleNamespace(
+            langfuse_public_key=None,
+            langfuse_secret_key=None,
+            langfuse_host=None,
+        ),
+    )
+    tracer = OptionalLangfuseTracer()
+
+    assert tracer.try_start() is False
+    assert tracer.enabled is False
+    assert tracer.client is None

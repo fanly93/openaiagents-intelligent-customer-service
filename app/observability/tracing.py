@@ -23,3 +23,34 @@ class LocalTracer:
         status: Literal["started", "success", "error"] = "success",
     ) -> None:
         self.events.append(TraceEvent(name=name, status=status, detail=detail or {}))
+
+
+class OptionalLangfuseTracer:
+    def __init__(self) -> None:
+        self.enabled = False
+        self.client = None
+
+    def try_start(self) -> bool:
+        try:
+            from app.config import get_settings
+
+            settings = get_settings()
+            if not (
+                settings.langfuse_public_key
+                and settings.langfuse_secret_key
+            ):
+                return False
+            from langfuse import Langfuse
+
+            self.client = Langfuse(
+                public_key=settings.langfuse_public_key,
+                secret_key=settings.langfuse_secret_key,
+                host=settings.langfuse_host,
+            )
+        except Exception:
+            self.client = None
+            self.enabled = False
+            return False
+
+        self.enabled = True
+        return True

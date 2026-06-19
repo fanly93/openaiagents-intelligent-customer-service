@@ -7,6 +7,7 @@ from app.harness.prompt_assembler import PromptAssembler
 from app.harness.reply_post_processor import ReplyPostProcessor
 from app.harness.state_reducer import StateReducer
 from app.observability.perf import PerformanceTracker
+from app.observability.hooks import CustomerServiceRunHooks
 from app.observability.tracing import LocalTracer
 from app.retrieval.memory_service import MockMemoryService
 from app.state.conversation_state import CustomerServiceState, EventSummary
@@ -44,6 +45,7 @@ class CustomerServiceHarness:
         start = perf_counter()
         tracker = PerformanceTracker()
         tracer = LocalTracer(request_id=request.request_id)
+        hooks = CustomerServiceRunHooks(tracer=tracer)
         state = self._init_state(request)
 
         try:
@@ -105,6 +107,7 @@ class CustomerServiceHarness:
                         mcp_servers=active_mcp_servers,
                         max_turns=request.max_turns,
                         model=request.model,
+                        hooks=hooks,
                     )
                 tracer.record("agent_end", {"token_usage": result.token_usage})
 

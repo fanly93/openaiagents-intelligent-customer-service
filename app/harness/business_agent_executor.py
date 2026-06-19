@@ -32,6 +32,7 @@ class BusinessAgentExecutor:
         mcp_servers: list[Any],
         max_turns: int,
         model: str | None = None,
+        hooks: Any | None = None,
     ) -> AgentRunResult:
         if self._runner:
             return await self._runner(
@@ -51,6 +52,7 @@ class BusinessAgentExecutor:
             mcp_servers,
             max_turns,
             model,
+            hooks,
         )
 
     async def _run_openai_agents(
@@ -62,6 +64,7 @@ class BusinessAgentExecutor:
         mcp_servers: list[Any],
         max_turns: int,
         model: str | None,
+        hooks: Any | None,
     ) -> AgentRunResult:
         from agents import Agent, Runner
 
@@ -77,6 +80,7 @@ class BusinessAgentExecutor:
             starting_agent=agent,
             input=user_message,
             context=state,
+            hooks=hooks,
             max_turns=max_turns,
         )
 
