@@ -38,6 +38,7 @@ Optional environment variables:
 
 ```bash
 export OPENAI_API_KEY="..."
+export ALLOWED_MODELS="gpt-4.1-mini"
 export DYNAMIC_HTTP_ALLOWED_HOSTS="api.example.com"
 export WEBHOOK_ALLOWED_HOSTS="hooks.example.com"
 
@@ -49,6 +50,8 @@ export LANGFUSE_HOST="https://cloud.langfuse.com"
 
 `DYNAMIC_HTTP_ALLOWED_HOSTS` and `WEBHOOK_ALLOWED_HOSTS` are comma-separated
 exact hostnames. Production defaults are fail-closed when allowlists are absent.
+`ALLOWED_MODELS` limits request-selectable models. Requests also constrain
+`max_turns` to the range `1..20`.
 
 ## Run The API
 
@@ -91,8 +94,10 @@ calls:
 .venv/bin/python scripts/run_demo_cases.py
 ```
 
-It prints one compact JSON response per line for an order case and a human
-handoff case.
+It prints one compact JSON object per line for ten cases: order, logistics,
+return policy, electronics troubleshooting with MCP, pet product advice, wig
+recommendation, human handoff, high-risk escalation, German reply, and dynamic
+HTTP tool execution.
 
 ## Run Mock Business APIs
 
@@ -116,15 +121,19 @@ curl -X POST http://127.0.0.1:18765/mock/order \
   -d '{"order_id": "A100"}'
 ```
 
-For a dynamic HTTP tool to call this local server during development, include
-`127.0.0.1` in `DYNAMIC_HTTP_ALLOWED_HOSTS`. Localhost access is intentionally
-not suitable for production deployments.
+Dynamic HTTP definitions are registered by deployment code per tenant. Request
+payloads may select a trusted tool name but cannot override its URL, method,
+headers, credentials, schema, or retry policy. Localhost access is suitable only
+for development bindings and is rejected by production HTTPS/private-address
+controls.
 
 ## MCP
 
-The built-in `product_support` stdio MCP server is registered by deployment
-code and can be selected by request name. Request payloads cannot provide
-arbitrary executable commands or remote MCP URLs.
+The built-in `product_support` stdio MCP server is registered for `tenant_a` by
+deployment code and can be selected by request name. Request payloads cannot
+provide arbitrary executable commands, remote MCP URLs, environment variables,
+or credentials. Other tenants fail closed unless their own trusted bindings are
+registered.
 
 ```bash
 .venv/bin/python mcp_servers/product_support_server.py
@@ -169,9 +178,11 @@ tests/               Unit and integration tests
 - Webhook delivery has no persistent retry queue.
 - Mock RAG uses keyword overlap rather than embeddings or hybrid retrieval.
 - Mock memory, order, logistics, and template data are local JSON files.
-- Trusted MCP definitions are currently registered in application code.
-- Langfuse support is an optional initialization adapter; local trace events are
-  always available.
+- Trusted dynamic HTTP and MCP definitions are currently registered in
+  application code.
+- Configured Langfuse credentials mirror local request/tool events and flush at
+  response completion. Local trace events remain available when the dependency,
+  configuration, or remote service is unavailable.
 - The first version is a single-Agent Harness. Router, planner, and specialist
   Agent orchestration are future evolution paths, not current behavior.
 
