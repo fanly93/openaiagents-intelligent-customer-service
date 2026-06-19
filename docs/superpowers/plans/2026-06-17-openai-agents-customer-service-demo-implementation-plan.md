@@ -2597,7 +2597,7 @@ git commit -m "feat: add customer service observability hooks"
 
 - [x] Stop after Task 4.5.
 - [x] Report changed files, tests run, commits created, and known API/async limitations.
-- [ ] Wait for user approval before Phase 5.
+- [x] Wait for user approval before Phase 5.
 
 ---
 
