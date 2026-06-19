@@ -21,7 +21,7 @@ dev = [
   "respx>=0.21.0",
 ]
 observability = [
-  "langfuse>=2.45.0",
+  "langfuse>=2.45.0,<3.0.0",
 ]
 
 [tool.pytest.ini_options]

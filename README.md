@@ -183,6 +183,8 @@ tests/               Unit and integration tests
 - Configured Langfuse credentials mirror local request/tool events and flush at
   response completion. Local trace events remain available when the dependency,
   configuration, or remote service is unavailable.
+- The optional dependency currently targets the Langfuse Python v2 tracing API;
+  migrating to its OpenTelemetry-native SDK is a separate production upgrade.
 - The first version is a single-Agent Harness. Router, planner, and specialist
   Agent orchestration are future evolution paths, not current behavior.
 
