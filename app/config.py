@@ -24,6 +24,10 @@ class Settings(BaseSettings):
         default=None,
         alias="DYNAMIC_HTTP_ALLOWED_HOSTS",
     )
+    webhook_allowed_hosts: str | None = Field(
+        default=None,
+        alias="WEBHOOK_ALLOWED_HOSTS",
+    )
 
 
 @lru_cache
