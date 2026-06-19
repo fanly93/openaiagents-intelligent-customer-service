@@ -1,0 +1,14 @@
+{
+  "tenant_a": {
+    "user_ada": [
+      {
+        "memory": "Customer prefers German responses when available.",
+        "keywords": ["german", "deutsch", "language"]
+      },
+      {
+        "memory": "Customer previously reported an E01 error on Airdog X5.",
+        "keywords": ["E01", "Airdog", "X5"]
+      }
+    ]
+  }
+}

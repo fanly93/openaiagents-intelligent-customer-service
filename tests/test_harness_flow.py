@@ -11,6 +11,7 @@ from app.harness.prompt_assembler import PromptAssembler
 from app.harness.state_reducer import StateReducer
 from app.observability.perf import PerformanceTracker
 from app.observability.tracing import LocalTracer
+from app.retrieval.memory_service import MockMemoryService
 from app.state.conversation_state import CustomerServiceState
 from app.state.request_models import (
     CustomerProfile,
@@ -711,3 +712,154 @@ async def test_dynamic_function_tool_returns_structured_input_error(raw_input):
     assert state.tool_call_history[-1]["result"] == {
         "error": "invalid_tool_input"
     }
+
+
+@pytest.mark.asyncio
+async def test_mock_memory_service_retrieves_user_memory():
+    memories = await MockMemoryService().retrieve(
+        tenant_id="tenant_a",
+        customer_id="user_ada",
+        query="Airdog X5 E01",
+        top_k=3,
+    )
+
+    assert memories
+    assert "E01" in memories[0]["memory"]
+    assert memories[0].get("score", 0) > 0
+
+
+@pytest.mark.asyncio
+async def test_mock_memory_service_resolves_default_data_from_project_root(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+
+    memories = await MockMemoryService().retrieve(
+        tenant_id="tenant_a",
+        customer_id="user_ada",
+        query="Deutsch language",
+    )
+
+    assert memories[0]["memory"] == (
+        "Customer prefers German responses when available."
+    )
+
+
+@pytest.mark.asyncio
+async def test_mock_memory_service_returns_only_relevant_scored_top_k_memories(
+    tmp_path,
+):
+    data_path = tmp_path / "memories.json"
+    data_path.write_text(
+        json.dumps(
+            {
+                "tenant_a": {
+                    "customer_1": [
+                        {
+                            "memory": "Most relevant",
+                            "keywords": ["order", "delay"],
+                        },
+                        {
+                            "memory": "Less relevant",
+                            "keywords": ["order"],
+                        },
+                        {
+                            "memory": "Irrelevant",
+                            "keywords": ["refund"],
+                        },
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    memories = await MockMemoryService(data_path=data_path).retrieve(
+        tenant_id="tenant_a",
+        customer_id="customer_1",
+        query="order delay",
+        top_k=1,
+    )
+
+    assert len(memories) == 1
+    assert memories[0]["memory"] == "Most relevant"
+    assert memories[0].get("score", 0) > 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("top_k", [0, -1])
+async def test_mock_memory_service_returns_empty_for_non_positive_top_k(
+    top_k,
+):
+    memories = await MockMemoryService().retrieve(
+        tenant_id="tenant_a",
+        customer_id="user_ada",
+        query="E01",
+        top_k=top_k,
+    )
+
+    assert memories == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source",
+    [
+        None,
+        "{not-json",
+        "[]",
+        "null",
+    ],
+)
+async def test_mock_memory_service_degrades_for_unusable_data_source(
+    tmp_path,
+    source,
+):
+    data_path = tmp_path / "memories.json"
+    if source is not None:
+        data_path.write_text(source, encoding="utf-8")
+
+    memories = await MockMemoryService(data_path=data_path).retrieve(
+        tenant_id="tenant_a",
+        customer_id="customer_1",
+        query="order",
+    )
+
+    assert memories == []
+
+
+@pytest.mark.asyncio
+async def test_mock_memory_service_does_not_cross_tenant_boundary(tmp_path):
+    data_path = tmp_path / "memories.json"
+    data_path.write_text(
+        json.dumps(
+            {
+                "tenant_a": {
+                    "user_ada": [
+                        {
+                            "memory": "Tenant A private warranty case.",
+                            "keywords": ["warranty"],
+                        }
+                    ]
+                },
+                "tenant_b": {
+                    "user_ada": [
+                        {
+                            "memory": "Tenant B delivery preference.",
+                            "keywords": ["delivery"],
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    memories = await MockMemoryService(data_path=data_path).retrieve(
+        tenant_id="tenant_b",
+        customer_id="user_ada",
+        query="warranty",
+    )
+
+    assert memories == []
