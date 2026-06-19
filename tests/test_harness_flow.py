@@ -192,7 +192,7 @@ async def test_customer_service_harness_runs_with_mock_executor():
         model,
     ):
         assert "Use tenant-specific warranty wording." in instructions
-        assert model == "gpt-test"
+        assert model == "gpt-4.1-mini"
         return AgentRunResult(
             final_output=(
                 "THINK: internal reasoning\n"
@@ -213,7 +213,7 @@ async def test_customer_service_harness_runs_with_mock_executor():
             subject="Order",
             content="Where is my order?",
             customer=CustomerProfile(name="Ada"),
-            model="gpt-test",
+            model="gpt-4.1-mini",
             instructions="Use tenant-specific warranty wording.",
         )
     )
@@ -250,7 +250,7 @@ async def test_customer_service_harness_returns_traced_error_response():
     )
 
     assert response.status == "error"
-    assert response.error == "model unavailable"
+    assert response.error == "Customer service processing failed."
     assert response.state_snapshot["events"][-1]["name"] == "request_error"
     assert response.state_snapshot["events"][-1]["status"] == "error"
     assert "agent_run" in response.state_snapshot["performance_stats"]

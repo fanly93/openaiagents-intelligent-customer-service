@@ -28,6 +28,10 @@ def _normalize_channel(value: str | None) -> str:
 
 
 def convert_emailv4_payload(payload: dict[str, Any]) -> CustomerServiceRequest:
+    tenant_id = str(payload.get("corp") or "").strip()
+    if not tenant_id:
+        raise ValueError("emailv4 payload requires corp")
+
     customer = CustomerProfile(
         id=payload.get("uuid"),
         name=payload.get("customer_name"),
@@ -36,7 +40,7 @@ def convert_emailv4_payload(payload: dict[str, Any]) -> CustomerServiceRequest:
 
     return CustomerServiceRequest(
         request_id=payload.get("qid") or payload.get("email_id"),
-        tenant_id=str(payload.get("corp") or "default"),
+        tenant_id=tenant_id,
         channel=_normalize_channel(payload.get("channel")),
         subject=payload.get("subject"),
         content=payload["content"],

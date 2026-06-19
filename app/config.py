@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     app_name: str = "OpenAI Agents Customer Service"
     environment: Literal["local", "test", "production"] = "local"
     default_model: str = "gpt-4.1-mini"
+    allowed_models: str = Field(
+        default="gpt-4.1-mini",
+        alias="ALLOWED_MODELS",
+    )
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
 
     langfuse_public_key: str | None = Field(default=None, alias="LANGFUSE_PUBLIC_KEY")

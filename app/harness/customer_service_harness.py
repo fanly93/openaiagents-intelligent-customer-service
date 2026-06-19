@@ -1,6 +1,7 @@
 from time import perf_counter
 from typing import Any
 
+from app.config import get_settings
 from app.harness.business_agent_executor import BusinessAgentExecutor
 from app.harness.handoff_policy import HandoffPolicy
 from app.harness.prompt_assembler import PromptAssembler
@@ -53,6 +54,7 @@ class CustomerServiceHarness:
                 "request_start",
                 {"tenant_id": request.tenant_id, "channel": request.channel},
             )
+            self._validate_model(request.model)
             with tracker.track("prepare_tools"):
                 tool_setup = await self.tool_registry.prepare(request)
             tracer.record(
@@ -140,7 +142,7 @@ class CustomerServiceHarness:
             )
             tracer.record(
                 "request_error",
-                {"error": str(exc)},
+                {"error_type": type(exc).__name__},
                 status="error",
             )
             return self._build_response(
@@ -148,8 +150,20 @@ class CustomerServiceHarness:
                 tracker,
                 tracer,
                 start,
-                error=str(exc),
+                error="Customer service processing failed.",
             )
+
+    @staticmethod
+    def _validate_model(model: str | None) -> None:
+        if not model:
+            return
+        allowed_models = {
+            item.strip()
+            for item in get_settings().allowed_models.split(",")
+            if item.strip()
+        }
+        if model not in allowed_models:
+            raise ValueError("requested model is not allowed")
 
     async def _preload_memory(
         self,

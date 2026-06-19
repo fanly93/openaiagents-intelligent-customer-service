@@ -173,6 +173,11 @@ def _validate_target(url: str) -> str | None:
         return "invalid_url"
     if host not in _allowed_hosts():
         return "target_not_allowed"
+    if (
+        getattr(get_settings(), "environment", "local") == "production"
+        and parsed.scheme != "https"
+    ):
+        return "https_required"
     return None
 
 

@@ -52,6 +52,11 @@ def _validate_webhook_url(webhook_url: str) -> str:
     host = (parsed.hostname or "").casefold()
     if parsed.scheme not in {"http", "https"} or not host:
         raise ValueError("Webhook URL must use http or https.")
+    if (
+        getattr(get_settings(), "environment", "local") == "production"
+        and parsed.scheme != "https"
+    ):
+        raise ValueError("Webhook URL must use HTTPS in production.")
     if host not in _webhook_allowed_hosts():
         raise ValueError("Webhook host is not allowed.")
     return host

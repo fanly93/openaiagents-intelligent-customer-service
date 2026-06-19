@@ -98,5 +98,5 @@ class CustomerServiceRequest(BaseModel):
     webhook_url: str | None = None
     async_mode: bool = False
     model: str | None = None
-    max_turns: int = 6
+    max_turns: int = Field(default=6, ge=1, le=20)
     instructions: str | None = None
