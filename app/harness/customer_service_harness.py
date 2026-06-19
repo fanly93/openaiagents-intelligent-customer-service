@@ -1,11 +1,14 @@
 from time import perf_counter
+from typing import Any
 
 from app.harness.business_agent_executor import BusinessAgentExecutor
+from app.harness.handoff_policy import HandoffPolicy
 from app.harness.prompt_assembler import PromptAssembler
 from app.harness.reply_post_processor import ReplyPostProcessor
 from app.harness.state_reducer import StateReducer
 from app.observability.perf import PerformanceTracker
 from app.observability.tracing import LocalTracer
+from app.retrieval.memory_service import MockMemoryService
 from app.state.conversation_state import CustomerServiceState, EventSummary
 from app.state.request_models import CustomerServiceRequest
 from app.state.result_models import CustomerServiceResponse
@@ -22,6 +25,8 @@ class CustomerServiceHarness:
         state_reducer: StateReducer | None = None,
         tool_registry: ToolRegistry | None = None,
         mcp_manager: MCPManager | None = None,
+        handoff_policy: HandoffPolicy | None = None,
+        memory_service: Any | None = None,
     ) -> None:
         self.executor = executor or BusinessAgentExecutor()
         self.prompt_assembler = prompt_assembler or PromptAssembler()
@@ -29,6 +34,8 @@ class CustomerServiceHarness:
         self.state_reducer = state_reducer or StateReducer()
         self.tool_registry = tool_registry or ToolRegistry()
         self.mcp_manager = mcp_manager or MCPManager()
+        self.handoff_policy = handoff_policy or HandoffPolicy()
+        self.memory_service = memory_service or MockMemoryService()
 
     async def run(
         self,
@@ -60,6 +67,8 @@ class CustomerServiceHarness:
                 },
                 status="started",
             )
+            with tracker.track("memory_retrieve"):
+                await self._preload_memory(request, state, tracer)
             with tracker.track("assemble_prompt"):
                 guide_parts = [
                     part
@@ -101,6 +110,15 @@ class CustomerServiceHarness:
 
             with tracker.track("post_process"):
                 state.final_reply = self.reply_processor.clean(result.final_output)
+            with tracker.track("handoff_policy"):
+                self.handoff_policy.apply(state)
+            tracer.record(
+                "handoff_policy",
+                {
+                    "need_handoff_to_human": state.need_handoff_to_human,
+                    "handoff_type": state.handoff_type,
+                },
+            )
             state.token_usage = result.token_usage
             tracer.record(
                 "response_built",
@@ -108,6 +126,15 @@ class CustomerServiceHarness:
             )
             return self._build_response(state, tracker, tracer, start)
         except Exception as exc:
+            self.handoff_policy.apply(state)
+            tracer.record(
+                "handoff_policy",
+                {
+                    "need_handoff_to_human": state.need_handoff_to_human,
+                    "handoff_type": state.handoff_type,
+                    "reason": "agent_execution_failed",
+                },
+            )
             tracer.record(
                 "request_error",
                 {"error": str(exc)},
@@ -120,6 +147,41 @@ class CustomerServiceHarness:
                 start,
                 error=str(exc),
             )
+
+    async def _preload_memory(
+        self,
+        request: CustomerServiceRequest,
+        state: CustomerServiceState,
+        tracer: LocalTracer,
+    ) -> None:
+        config = request.memory_config
+        customer_id = request.customer.id
+        if not config or not config.enabled or not customer_id:
+            return
+
+        try:
+            state.user_memories = await self.memory_service.retrieve(
+                tenant_id=request.tenant_id,
+                customer_id=customer_id,
+                query=request.content,
+                top_k=config.top_k,
+            )
+        except Exception:
+            state.user_memories = []
+            tracer.record(
+                "memory_retrieve",
+                {"customer_id": customer_id, "count": 0},
+                status="error",
+            )
+            return
+
+        tracer.record(
+            "memory_retrieve",
+            {
+                "customer_id": customer_id,
+                "count": len(state.user_memories),
+            },
+        )
 
     def _build_response(
         self,

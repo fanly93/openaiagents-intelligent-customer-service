@@ -20,6 +20,7 @@ from app.state.request_models import (
     HttpToolParam,
     MCPServerConfig,
     MCPToolOverride,
+    MemoryConfig,
     SlotDefinition,
 )
 from app.tools.mcp_manager import MCPManager, MCPServerDefinition
@@ -863,3 +864,145 @@ async def test_mock_memory_service_does_not_cross_tenant_boundary(tmp_path):
     )
 
     assert memories == []
+
+
+@pytest.mark.asyncio
+async def test_harness_applies_handoff_policy_for_empty_reply():
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        return AgentRunResult(final_output="")
+
+    response = await CustomerServiceHarness(
+        executor=BusinessAgentExecutor(runner=fake_runner)
+    ).run(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Help",
+        )
+    )
+
+    assert response.need_handoff_to_human is True
+    assert response.handoff_type == "reply_handoff"
+    assert response.reply["body"] == ""
+
+
+@pytest.mark.asyncio
+async def test_harness_preloads_tenant_scoped_memory_before_prompt_assembly():
+    calls = []
+
+    class StubMemoryService:
+        async def retrieve(
+            self,
+            tenant_id,
+            customer_id,
+            query,
+            top_k,
+        ):
+            calls.append((tenant_id, customer_id, query, top_k))
+            return [
+                {
+                    "memory": "Customer prefers German replies.",
+                    "score": 2,
+                }
+            ]
+
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        assert state.user_memories[0]["memory"].startswith(
+            "Customer prefers"
+        )
+        assert "Customer prefers German replies." in instructions
+        return AgentRunResult(final_output="Wir helfen Ihnen gerne weiter.")
+
+    response = await CustomerServiceHarness(
+        executor=BusinessAgentExecutor(runner=fake_runner),
+        memory_service=StubMemoryService(),
+    ).run(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Airdog X5 E01",
+            customer=CustomerProfile(id="user_ada"),
+            memory_config=MemoryConfig(enabled=True, top_k=3),
+        )
+    )
+
+    assert response.status == "success"
+    assert calls == [("tenant_a", "user_ada", "Airdog X5 E01", 3)]
+    assert response.state_snapshot["user_memories"][0]["score"] == 2
+    assert any(
+        event["name"] == "memory_retrieve"
+        for event in response.state_snapshot["events"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_harness_degrades_when_memory_provider_fails():
+    class FailingMemoryService:
+        async def retrieve(self, **kwargs):
+            raise RuntimeError("memory unavailable")
+
+    async def fake_runner(
+        state,
+        instructions,
+        user_message,
+        tools,
+        mcp_servers,
+        max_turns,
+        model,
+    ):
+        assert state.user_memories == []
+        return AgentRunResult(final_output="We can still help you.")
+
+    response = await CustomerServiceHarness(
+        executor=BusinessAgentExecutor(runner=fake_runner),
+        memory_service=FailingMemoryService(),
+    ).run(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Help",
+            customer=CustomerProfile(id="user_ada"),
+            memory_config=MemoryConfig(enabled=True),
+        )
+    )
+
+    assert response.status == "success"
+    memory_event = next(
+        event
+        for event in response.state_snapshot["events"]
+        if event["name"] == "memory_retrieve"
+    )
+    assert memory_event["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_harness_marks_agent_execution_failure_for_reply_handoff():
+    async def failing_runner(*args, **kwargs):
+        raise RuntimeError("maximum turns exceeded")
+
+    response = await CustomerServiceHarness(
+        executor=BusinessAgentExecutor(runner=failing_runner)
+    ).run(
+        CustomerServiceRequest(
+            tenant_id="tenant_a",
+            content="Please help with my order.",
+        )
+    )
+
+    assert response.status == "error"
+    assert response.need_handoff_to_human is True
+    assert response.handoff_type == "reply_handoff"
+    assert response.handoff_reason
