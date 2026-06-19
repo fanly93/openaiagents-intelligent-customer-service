@@ -1,0 +1,10 @@
+{
+  "default_email": {
+    "subject": "Re: Customer Support",
+    "body": "Dear customer,\n\nThank you for reaching out. We are reviewing your request and will help as soon as possible.\n\nBest regards,\nSupport Team"
+  },
+  "handoff_reply": {
+    "subject": "Re: Customer Support",
+    "body": "Dear customer,\n\nThank you for your message. I have escalated this to a human support specialist for further assistance.\n\nBest regards,\nSupport Team"
+  }
+}
