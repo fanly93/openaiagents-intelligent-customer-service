@@ -72,7 +72,7 @@ Parallel-agent assessment:
 - Create: `.env.example`
 - Verify: `.gitignore`
 
-- [ ] **Step 1: Confirm `.env` remains ignored**
+- [x] **Step 1: Confirm `.env` remains ignored**
 
 Run:
 
@@ -82,7 +82,7 @@ git check-ignore -v .env
 
 Expected: output identifies the `.env` rule from `.gitignore`.
 
-- [ ] **Step 2: Create the local `.env`**
+- [x] **Step 2: Create the local `.env`**
 
 Create `.env` with no real credentials:
 
@@ -116,12 +116,12 @@ LANGFUSE_SECRET_KEY=
 LANGFUSE_HOST=
 ```
 
-- [ ] **Step 3: Create the tracked `.env.example`**
+- [x] **Step 3: Create the tracked `.env.example`**
 
 Create `.env.example` with the same safe content as `.env`. Keep all API key
 values empty.
 
-- [ ] **Step 4: Verify no local secret file is staged**
+- [x] **Step 4: Verify no local secret file is staged**
 
 Run:
 
@@ -142,7 +142,7 @@ Expected: `.env.example` is untracked, `.env` is absent from `git status`, and
 - Create: `app/providers/openai_compatible.py`
 - Test: `tests/test_model_provider.py`
 
-- [ ] **Step 1: Write failing settings and resolver tests**
+- [x] **Step 1: Write failing settings and resolver tests**
 
 Create `tests/test_model_provider.py`:
 
@@ -243,7 +243,7 @@ def test_resolver_rejects_non_http_base_url():
     assert exc_info.value.code == "invalid_base_url"
 ```
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 
@@ -254,7 +254,7 @@ Run:
 Expected: collection fails because `app.providers.openai_compatible` does not
 exist.
 
-- [ ] **Step 3: Add provider settings**
+- [x] **Step 3: Add provider settings**
 
 Extend `Settings` in `app/config.py` with:
 
@@ -318,7 +318,7 @@ Extend `Settings` in `app/config.py` with:
 Remove the old duplicate `openai_api_key` declaration. Keep `default_model`
 temporarily for backward compatibility until Stage 2 updates executor usage.
 
-- [ ] **Step 4: Implement the resolver**
+- [x] **Step 4: Implement the resolver**
 
 Create `app/providers/__init__.py`:
 
@@ -409,7 +409,7 @@ def resolve_provider_config(settings: Any) -> ProviderConfig:
     )
 ```
 
-- [ ] **Step 5: Run focused tests to verify GREEN**
+- [x] **Step 5: Run focused tests to verify GREEN**
 
 Run:
 
@@ -419,7 +419,7 @@ Run:
 
 Expected: all provider settings and resolver tests pass.
 
-- [ ] **Step 6: Run Stage 1 regression**
+- [x] **Step 6: Run Stage 1 regression**
 
 Run:
 
