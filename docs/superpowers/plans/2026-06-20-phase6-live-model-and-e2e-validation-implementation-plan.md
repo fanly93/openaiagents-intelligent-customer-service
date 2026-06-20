@@ -429,7 +429,7 @@ Run:
 
 Expected: all selected regression tests pass.
 
-- [ ] **Step 7: Commit Stage 1**
+- [x] **Step 7: Commit Stage 1**
 
 Run:
 
@@ -440,7 +440,7 @@ git commit -m "feat: add openai-compatible provider configuration"
 
 Do not add `.env`.
 
-- [ ] **Stage 1 Checkpoint: stop and report**
+- [x] **Stage 1 Checkpoint: stop and report**
 
 Report provider fields, resolver behavior, tests run, commit hash, and confirm
 that `.env` is ignored and contains no filled credentials.
