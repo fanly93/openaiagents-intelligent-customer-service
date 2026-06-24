@@ -2,6 +2,8 @@
 
 ## Specification Authority
 
+- The current cross-session status and direct resume instructions are:
+  `SESSION_HANDOFF.md`.
 - The approved Phase 1-5 project design is:
   `docs/superpowers/specs/2026-06-17-openai-agents-customer-service-design.md`.
 - The approved Phase 6 validation design is:
